@@ -1,14 +1,11 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Smartphone, Monitor, Footprints, ShieldCheck, User, Sparkles, LogOut } from 'lucide-react';
+import { ShieldCheck, User, LogOut } from 'lucide-react';
 
 export default function TopSimulatorBar() {
   const {
     currentRole,
     switchToRole,
-    deviceFrameMode,
-    setDeviceFrameMode,
-    user,
     isAuthenticated,
     handleLogout,
     handleLogin
@@ -19,37 +16,17 @@ export default function TopSimulatorBar() {
       <div className="toolbar-brand">
         <div>
           <h1>Passo é Saúde</h1>
-          <span>Bem-Estar, Gamificação & Conformidade Ocupacional</span>
+          <span>Bem-Estar, Gamificação &amp; Conformidade Ocupacional</span>
         </div>
       </div>
 
       <div className="toolbar-actions">
-        {/* Device Frame Viewport Toggle */}
-        <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.06)', padding: '3px', borderRadius: '999px' }}>
-          <button
-            className={`btn-tool ${deviceFrameMode === 'mobile-mockup' ? 'active' : ''}`}
-            onClick={() => setDeviceFrameMode('mobile-mockup')}
-            title="Ver na Moldura Mobile Smartphone"
-          >
-            <Smartphone size={14} />
-            <span>Mobile</span>
-          </button>
-          <button
-            className={`btn-tool ${deviceFrameMode === 'full-responsive' ? 'active' : ''}`}
-            onClick={() => setDeviceFrameMode('full-responsive')}
-            title="Ver em Tela Cheia / Desktop"
-          >
-            <Monitor size={14} />
-            <span>Responsivo</span>
-          </button>
-        </div>
-
         {/* Role Switcher */}
         <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.06)', padding: '3px', borderRadius: '999px' }}>
           <button
             className={`btn-tool ${currentRole === 'colaborador' ? 'active' : ''}`}
             onClick={() => switchToRole('colaborador')}
-            title="Visão do Colaborador (App Mobile)"
+            title="Visão do Colaborador"
           >
             <User size={14} />
             <span>Colaborador</span>

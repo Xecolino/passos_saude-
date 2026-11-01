@@ -176,136 +176,95 @@ body {
 }
 
 /* ====================================================================
-   VIEWPORT WRAPPER (MOBILE FRAME VS FULL RESPONSIVE)
+   VIEWPORT WRAPPER (AUTOMATIC RESPONSIVENESS: MOBILE, TABLET, DESKTOP)
    ==================================================================== */
 .viewport-wrapper {
   flex: 1;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: 24px 16px;
-  width: 100%;
-}
-
-.viewport-wrapper.mode-full-responsive {
+  align-items: stretch;
   padding: 0;
-  max-width: 1200px;
+  width: 100%;
+}
+
+/* Fluid Responsive Container */
+.responsive-app-container {
+  width: 100%;
+  max-width: 100%;
+  min-height: calc(100dvh - 58px);
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  position: relative;
   margin: 0 auto;
-}
-
-/* Realistic Smartphone Shell */
-.phone-mockup-frame {
-  width: 100%;
-  max-width: 410px;
-  height: 844px;
-  max-height: calc(100vh - 110px);
-  background: #ffffff;
-  border-radius: 46px;
-  border: 11px solid #1e293b;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7),
-              0 0 0 1px rgba(255, 255, 255, 0.1),
-              inset 0 0 4px rgba(255, 255, 255, 0.2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  position: relative;
-  transition: all 0.3s ease;
-}
-
-/* Fluid Responsive Container (Desktop / Tablet view) */
-.full-responsive-card {
-  width: 100%;
-  max-width: 900px;
-  min-height: calc(100vh - 80px);
-  background: #ffffff;
-  border-radius: 20px;
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  margin: 20px auto;
-}
-
-/* Top Device Notch & Status Bar */
-.phone-status-bar {
-  height: 44px;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #0f172a;
-  position: relative;
-  z-index: 30;
-  user-select: none;
-  flex-shrink: 0;
-}
-
-.phone-notch {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 130px;
-  height: 24px;
-  background: #0f172a;
-  border-bottom-left-radius: 16px;
-  border-bottom-right-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.notch-camera {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #1e293b;
-}
-
-.notch-speaker {
-  width: 44px;
-  height: 4px;
-  border-radius: 4px;
-  background: #1e293b;
-}
-
-.phone-status-icons {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Bottom iOS Indicator Bar */
-.phone-home-indicator-bar {
-  height: 20px;
-  background: #ffffff;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.phone-home-indicator {
-  width: 134px;
-  height: 4px;
-  background: #cbd5e1;
-  border-radius: 999px;
+  transition: max-width 0.25s ease;
 }
 
 /* App Main Content Area */
 .app-screen-content {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
   background: #f8fafc;
   display: flex;
   flex-direction: column;
   position: relative;
-  -webkit-overflow-scrolling: touch;
+}
+
+/* Tablet Breakpoint (640px to 1023px) */
+@media (min-width: 640px) {
+  .viewport-wrapper {
+    padding: 20px 16px;
+  }
+
+  .responsive-app-container {
+    max-width: 720px;
+    min-height: calc(100dvh - 100px);
+    border-radius: 24px;
+    box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+  }
+
+  .responsive-app-container.wide-dashboard {
+    max-width: 960px;
+  }
+}
+
+/* Desktop Breakpoint (1024px and up) */
+@media (min-width: 1024px) {
+  .viewport-wrapper {
+    padding: 28px 24px;
+  }
+
+  .responsive-app-container {
+    max-width: 920px;
+    border-radius: 28px;
+  }
+
+  .responsive-app-container.wide-dashboard {
+    max-width: 1180px;
+  }
+}
+
+/* Mobile Breakpoint (< 640px) */
+@media (max-width: 639px) {
+  .top-demo-toolbar {
+    padding: 8px 14px;
+    gap: 8px;
+  }
+
+  .toolbar-brand h1 {
+    font-size: 0.92rem;
+  }
+
+  .toolbar-brand span {
+    display: none;
+  }
+
+  .btn-tool {
+    padding: 5px 10px;
+    font-size: 0.74rem;
+  }
 }
 
 /* Custom Scrollbar */
@@ -401,15 +360,17 @@ body {
    BOTTOM NAVIGATION BAR
    ==================================================================== */
 .bottom-nav {
-  height: 64px;
-  background: #ffffff;
+  height: 68px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
   border-top: 1px solid var(--border-light);
   display: flex;
   align-items: center;
   justify-content: space-around;
   padding: 0 6px;
   flex-shrink: 0;
-  position: relative;
+  position: sticky;
+  bottom: 0;
   z-index: 28;
 }
 
@@ -465,10 +426,24 @@ body {
    CARD COMPONENTS & CAROUSEL TILES
    ==================================================================== */
 .screen-body {
+  flex: 1;
   padding: 18px 16px 32px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+@media (min-width: 640px) {
+  .screen-body {
+    padding: 24px 28px 36px;
+    gap: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .screen-body {
+    padding: 28px 36px 40px;
+  }
 }
 
 .app-card {
@@ -880,11 +855,11 @@ body {
    MODAL COMPONENT
    ==================================================================== */
 .modal-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(15, 23, 42, 0.65);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  z-index: 9998;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -899,8 +874,21 @@ body {
   padding: 24px 20px 28px;
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.15);
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  max-height: 85%;
+  max-height: 88dvh;
   overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .modal-overlay {
+    align-items: center;
+    padding: 20px;
+  }
+
+  .modal-sheet {
+    max-width: 520px;
+    border-radius: 24px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  }
 }
 
 .modal-header {
