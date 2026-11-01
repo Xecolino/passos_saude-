@@ -191,34 +191,80 @@ export const healthProfessionals = [
 
 export const meditationSessions = [
   {
-    id: "med_1",
-    title: "Respiração Consciente & Foco",
+    id: "44444444-4444-4444-4444-444444444401",
+    code: "A1",
+    title: "A1 — Respiração 4-4-6 — Ancoragem Rápida",
+    shortTitle: "A1 • Ancoragem 4-4-6",
+    technique: "Técnica 4-4-6 (Inspira 4s • Segura 4s • Expira 6s)",
     duration: "5 minutos",
-    durationSeconds: 300,
-    instructor: "Camila Duarte",
+    durationSeconds: 385,
+    instructor: "Locução Guiada • 432 Hz",
     coinsReward: 50,
-    description: "Técnica de alívio de estresse imediato recomendada para pausas entre reuniões.",
-    audioTone: "mindful-bells"
+    description: "Reduz a dispersão mental e cria um ponto de ancoragem antes de reuniões, apresentações ou tarefas complexas.",
+    audioUrl: new URL('../../audio/A1_Respiracao_4-4-6_Ancoragem_Rapida.mp3', import.meta.url).href,
+    fileName: "A1_Respiracao_4-4-6_Ancoragem_Rapida.mp3",
+    breathPattern: [
+      { phase: "Inspire", seconds: 4 },
+      { phase: "Segure", seconds: 4 },
+      { phase: "Expire", seconds: 6 }
+    ]
   },
   {
-    id: "med_2",
-    title: "Pausa Anti-Estresse e Relaxamento Ocular",
-    duration: "3 minutos",
-    durationSeconds: 180,
-    instructor: "Felipe Rocha",
-    coinsReward: 30,
-    description: "Alívio da tensão nos olhos, ombros e cervical causados por telas contínuas.",
-    audioTone: "ocean-breeze"
+    id: "44444444-4444-4444-4444-444444444402",
+    code: "A2",
+    title: "A2 — Respiração Quadrada 4-4-4-4 — Equilíbrio",
+    shortTitle: "A2 • Quadrada 4-4-4-4",
+    technique: "Respiração Quadrada (Inspira 4s • Cheio 4s • Expira 4s • Vazio 4s)",
+    duration: "5 minutos",
+    durationSeconds: 372,
+    instructor: "Locução Guiada • 432 Hz",
+    coinsReward: 50,
+    description: "Estabiliza a atenção e restaura a cadência mental quando há excesso de estímulos e muitas abas abertas.",
+    audioUrl: new URL('../../audio/A2_Respiracao_Quadrada_4-4-4-4_Equilibrio.mp3', import.meta.url).href,
+    fileName: "A2_Respiracao_Quadrada_4-4-4-4_Equilibrio.mp3",
+    breathPattern: [
+      { phase: "Inspire", seconds: 4 },
+      { phase: "Sustente", seconds: 4 },
+      { phase: "Expire", seconds: 4 },
+      { phase: "Repouse", seconds: 4 }
+    ]
   },
   {
-    id: "med_3",
-    title: "Descompressão de Fim de Turno",
-    duration: "10 minutos",
-    durationSeconds: 600,
-    instructor: "Dra. Ana Ribeiro",
-    coinsReward: 100,
-    description: "Separação saudável entre o horário de trabalho e o tempo de descanso pessoal.",
-    audioTone: "forest-ambient"
+    id: "44444444-4444-4444-4444-444444444403",
+    code: "A3",
+    title: "A3 — Respiração 4-7-8 — Desaceleração Mental",
+    shortTitle: "A3 • Desaceleração 4-7-8",
+    technique: "Técnica 4-7-8 (Inspira 4s • Segura 7s • Expira 8s)",
+    duration: "5 minutos",
+    durationSeconds: 358,
+    instructor: "Locução Guiada • 432 Hz",
+    coinsReward: 50,
+    description: "Desativa rapidamente o estado de alerta fisiológico após situações de pressão, prazos curtos ou conversas difíceis.",
+    audioUrl: new URL('../../audio/A3_Respiracao_4-7-8_Desaceleracao_Mental.mp3', import.meta.url).href,
+    fileName: "A3_Respiracao_4-7-8_Desaceleracao_Mental.mp3",
+    breathPattern: [
+      { phase: "Inspire", seconds: 4 },
+      { phase: "Segure", seconds: 7 },
+      { phase: "Expire", seconds: 8 }
+    ]
+  },
+  {
+    id: "44444444-4444-4444-4444-444444444404",
+    code: "A4",
+    title: "A4 — Respiração Alternada 4-6 — Clareza e Presença",
+    shortTitle: "A4 • Alternada 4-6",
+    technique: "Coerência 4-6 & Foco Alternado (Inspira 4s • Expira 6s)",
+    duration: "5 minutos",
+    durationSeconds: 339,
+    instructor: "Locução Guiada • 432 Hz",
+    coinsReward: 50,
+    description: "Limpa a fadiga cognitiva de meio de expediente combinando atenção alternada entre as narinas e ritmo 4-6.",
+    audioUrl: new URL('../../audio/A4_Respiracao_Alternada_Clareza_e_Presenca.mp3', import.meta.url).href,
+    fileName: "A4_Respiracao_Alternada_Clareza_e_Presenca.mp3",
+    breathPattern: [
+      { phase: "Inspire", seconds: 4 },
+      { phase: "Expire", seconds: 6 }
+    ]
   }
 ];
 

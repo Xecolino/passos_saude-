@@ -76,40 +76,50 @@ insert into public.termos (id, versao, titulo, conteudo, publicado_em, ativo) va
 on conflict (versao) do nothing;
 
 -- ------------------------------------------------------------------------------
--- 5. BIBLIOTECA DE MEDITAÇÕES GUIADAS
+-- 5. BIBLIOTECA DE MEDITAÇÕES GUIADAS (BLOCO A — RESPIRAÇÃO CONSCIENTE & FOCO)
 -- ------------------------------------------------------------------------------
 insert into public.meditacoes (id, titulo, descricao, categoria, url_audio, duracao_seg, publicado) values
   (
     '44444444-4444-4444-4444-444444444401',
-    'Respiração Consciente & Foco',
-    'Técnica de alívio de estresse imediato recomendada para pausas entre reuniões. Instrutora: Camila Duarte.',
-    'Foco & Atenção',
-    'mindful-bells',
-    300,
+    'A1 — Respiração 4-4-6 — Ancoragem Rápida',
+    'Reduz a dispersão mental e cria um ponto de ancoragem antes de reuniões, apresentações ou tarefas complexas (inspira 4, segura 4, expira 6).',
+    'Bloco A • Foco & Atenção',
+    'A1_Respiracao_4-4-6_Ancoragem_Rapida.mp3',
+    385,
     true
   ),
   (
     '44444444-4444-4444-4444-444444444402',
-    'Pausa Anti-Estresse e Relaxamento Ocular',
-    'Alívio da tensão nos olhos, ombros e cervical causados por telas contínuas. Instrutor: Felipe Rocha.',
-    'Pausa Ativa',
-    'ocean-breeze',
-    180,
+    'A2 — Respiração Quadrada 4-4-4-4 — Equilíbrio',
+    'Estabiliza a atenção e restaura a cadência mental quando há excesso de estímulos e muitas abas abertas (inspira 4, sustenta 4, expira 4, pausa vazio 4).',
+    'Bloco A • Foco & Atenção',
+    'A2_Respiracao_Quadrada_4-4-4-4_Equilibrio.mp3',
+    372,
     true
   ),
   (
     '44444444-4444-4444-4444-444444444403',
-    'Descompressão de Fim de Turno',
-    'Separação saudável entre o horário de trabalho e o tempo de descanso pessoal. Instrutora: Dra. Ana Ribeiro.',
-    'Descompressão',
-    'forest-ambient',
-    600,
+    'A3 — Respiração 4-7-8 — Desaceleração Mental',
+    'Desativa rapidamente o estado de alerta fisiológico após situações de pressão, prazos curtos ou conversas difíceis (inspira 4, segura 7, expira 8).',
+    'Bloco A • Foco & Atenção',
+    'A3_Respiracao_4-7-8_Desaceleracao_Mental.mp3',
+    358,
+    true
+  ),
+  (
+    '44444444-4444-4444-4444-444444444404',
+    'A4 — Respiração Alternada 4-6 — Clareza e Presença',
+    'Limpa a fadiga cognitiva de meio de expediente combinando atenção alternada entre as narinas e ritmo de coerência 4-6.',
+    'Bloco A • Foco & Atenção',
+    'A4_Respiracao_Alternada_Clareza_e_Presenca.mp3',
+    339,
     true
   )
 on conflict (id) do update set
   titulo      = excluded.titulo,
   descricao   = excluded.descricao,
   categoria   = excluded.categoria,
+  url_audio   = excluded.url_audio,
   duracao_seg = excluded.duracao_seg,
   publicado   = true;
 
