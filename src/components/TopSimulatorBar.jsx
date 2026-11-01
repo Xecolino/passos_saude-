@@ -22,7 +22,7 @@ export default function TopSimulatorBar() {
 
       <div className="toolbar-actions">
         {/* Role Switcher */}
-        <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.06)', padding: '3px', borderRadius: '999px' }}>
+        <div className="role-switcher-group">
           <button
             className={`btn-tool ${currentRole === 'colaborador' ? 'active' : ''}`}
             onClick={() => switchToRole('colaborador')}
@@ -44,10 +44,9 @@ export default function TopSimulatorBar() {
         {/* Auth status */}
         {isAuthenticated ? (
           <button
-            className="btn-tool"
+            className="btn-tool btn-logout"
             onClick={handleLogout}
             title="Sair da conta"
-            style={{ color: '#f87171' }}
           >
             <LogOut size={14} />
             <span>Sair</span>

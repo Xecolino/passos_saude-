@@ -133,14 +133,24 @@ body {
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.role-switcher-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 3px;
+  border-radius: 999px;
 }
 
 .btn-tool {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 5px;
   padding: 6px 14px;
   border-radius: var(--radius-full);
   font-size: 0.8rem;
@@ -150,6 +160,11 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
   color: #f1f5f9;
+  white-space: nowrap;
+}
+
+.btn-tool.btn-logout {
+  color: #f87171;
 }
 
 .btn-tool:hover {
@@ -249,21 +264,46 @@ body {
 /* Mobile Breakpoint (< 640px) */
 @media (max-width: 639px) {
   .top-demo-toolbar {
-    padding: 8px 14px;
+    padding: 10px 14px;
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
   }
 
   .toolbar-brand h1 {
-    font-size: 0.92rem;
+    font-size: 1rem;
+    line-height: 1.2;
   }
 
   .toolbar-brand span {
-    display: none;
+    display: block;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 2px;
+    line-height: 1.25;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .role-switcher-group {
+    flex: 1;
+    display: flex;
+  }
+
+  .role-switcher-group .btn-tool {
+    flex: 1;
   }
 
   .btn-tool {
-    padding: 5px 10px;
-    font-size: 0.74rem;
+    padding: 6px 10px;
+    font-size: 0.75rem;
   }
 }
 
