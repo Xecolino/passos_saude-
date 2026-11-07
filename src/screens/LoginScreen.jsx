@@ -1,16 +1,28 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Mail, Lock, Footprints, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Footprints, ShieldAlert, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginScreen() {
   const { handleLogin } = useApp();
-  const [email, setEmail] = useState('ana.colaboradora@empresa.com.br');
-  const [password, setPassword] = useState('12345678');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await handleLogin('colaborador', { email, password });
+    setErrorMessage('');
+    setIsLoading(true);
+    try {
+      const res = await handleLogin('colaborador', { email, password });
+      if (res && res.success === false && res.error) {
+        setErrorMessage(res.error);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRhLogin = () => {
@@ -47,7 +59,7 @@ export default function LoginScreen() {
           color: '#0f172a',
           letterSpacing: '-0.5px'
         }}>
-          Passos Saúde
+          Passo é Saúde
         </h1>
         <p style={{
           fontSize: '0.88rem',
@@ -67,6 +79,25 @@ export default function LoginScreen() {
         boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.05)',
         border: '1px solid rgba(226, 232, 240, 0.8)'
       }}>
+        {errorMessage && (
+          <div style={{
+            background: '#fee2e2',
+            border: '1px solid #fca5a5',
+            color: '#dc2626',
+            padding: '10px 14px',
+            borderRadius: '12px',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '16px'
+          }}>
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           {/* E-mail */}
           <div className="form-group">
@@ -76,7 +107,7 @@ export default function LoginScreen() {
               <input
                 type="email"
                 className="form-input"
-                placeholder="colaborador@empresa.com.br"
+                placeholder="seu.email@empresa.com.br"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -86,17 +117,36 @@ export default function LoginScreen() {
 
           {/* Senha */}
           <div className="form-group" style={{ marginBottom: '10px' }}>
-            <label className="form-label">Senha</label>
-            <div className="input-with-icon">
+            <label className="form-label">Senha (ou Senha Provisória)</label>
+            <div className="input-with-icon" style={{ position: 'relative' }}>
               <Lock size={18} className="input-icon" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 className="form-input"
-                placeholder="••••••••"
+                placeholder="Digite sua senha de acesso"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                style={{ paddingRight: '42px' }}
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
           </div>
 
@@ -114,17 +164,18 @@ export default function LoginScreen() {
                 cursor: 'pointer'
               }}
             >
-              {forgotSent ? 'E-mail de recuperação enviado!' : 'Esqueci minha senha'}
+              {forgotSent ? 'Solicite redefinição ao RH da sua empresa' : 'Esqueci minha senha'}
             </button>
           </div>
 
           {/* Botão Entrar */}
           <button
             type="submit"
+            disabled={isLoading}
             className="btn-primary btn-full"
             style={{ padding: '14px', fontSize: '0.95rem' }}
           >
-            Entrar no Aplicativo
+            {isLoading ? 'Autenticando...' : 'Entrar no Aplicativo'}
           </button>
         </form>
 
@@ -164,56 +215,8 @@ export default function LoginScreen() {
           onMouseLeave={(e) => e.currentTarget.style.background = '#ffffff'}
         >
           <ShieldAlert size={17} />
-          <span>Acessar como Gestor de RH</span>
+          <span>Acessar Módulo Gestor RH</span>
         </button>
-
-        {/* Demo Fast Login Helpers */}
-        <div style={{
-          marginTop: '20px',
-          padding: '12px',
-          background: '#f8fafc',
-          borderRadius: '14px',
-          border: '1px dashed #cbd5e1',
-          fontSize: '0.75rem',
-          color: '#64748b',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontWeight: 600, marginBottom: '6px', color: '#334155' }}>
-            ⚡ Demonstração com 1-Clique:
-          </div>
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-            <button
-              onClick={() => handleLogin('colaborador')}
-              style={{
-                background: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '4px 10px',
-                fontSize: '0.73rem',
-                cursor: 'pointer',
-                fontWeight: 600,
-                color: '#15803d'
-              }}
-            >
-              Ana (Colaborador)
-            </button>
-            <button
-              onClick={() => handleLogin('rh')}
-              style={{
-                background: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '4px 10px',
-                fontSize: '0.73rem',
-                cursor: 'pointer',
-                fontWeight: 600,
-                color: '#2563eb'
-              }}
-            >
-              Gestor SST/NR-1
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Footer Legal */}
@@ -224,7 +227,7 @@ export default function LoginScreen() {
         marginTop: '24px',
         lineHeight: 1.4
       }}>
-        Ao continuar, você aceita os termos de uso e a política de privacidade em conformidade com a LGPD e NR-1.
+        Ao continuar, você aceita os termos de responsabilidade e a política de privacidade em conformidade com a LGPD (Art. 11) e NR-1.
       </p>
     </div>
   );

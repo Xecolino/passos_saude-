@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function CollaboratorsModal({ isOpen, onClose }) {
-  const { employeesList, syncEmployeesWithSupabase, isDatabaseConnected, showToast } = useApp();
+  const { employeesList, updateEmployee, syncEmployeesWithSupabase, isDatabaseConnected, showToast } = useApp();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRlsModalOpen, setIsRlsModalOpen] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
@@ -302,28 +302,37 @@ create policy convites_demo on public.convites for all to anon, authenticated
                   zIndex: 2
                 }}>
                   <th style={{ padding: '12px 16px', width: '38px', textAlign: 'center' }}></th>
-                  <th style={{ padding: '12px 16px' }}>Colaborador / Cargo</th>
-                  <th style={{ padding: '12px 16px' }}>E-mail</th>
+                  <th style={{ padding: '12px 16px' }}>Usuário / Cargo</th>
+                  <th style={{ padding: '12px 16px' }}>E-mail / CPF</th>
                   <th style={{ padding: '12px 16px' }}>Setor (GHE)</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center' }}>Papel</th>
                   <th style={{ padding: '12px 16px', textAlign: 'center' }}>Situação</th>
                   <th style={{ padding: '12px 16px', textAlign: 'right' }}>Média Passos/Dia</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'center' }}>Apoio NR-1</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'center' }}>Meditação</th>
                   <th style={{ padding: '12px 16px', textAlign: 'right' }}>Carteira (Moedas)</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'center', width: '60px' }}>Ação</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', width: '90px' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-                      Nenhum colaborador encontrado para a busca "{searchTerm}".
+                    <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                      Nenhum usuário cadastrado para esta empresa. Clique em "Novo Cadastro" para convidar colaboradores, gestores, RH ou psicólogos.
                     </td>
                   </tr>
                 ) : (
                   filteredEmployees.map((emp) => {
                     const isSelected = activeSelected && activeSelected.id === emp.id;
-                    const situacao = emp.situacao || 'ativo';
+                    const situacao = emp.situacao || 'convidado';
+                    const papel = emp.papel || 'colaborador';
+
+                    const situacaoStyles = {
+                      ativo: { bg: '#dcfce7', color: '#15803d' },
+                      convidado: { bg: '#fef3c7', color: '#b45309' },
+                      inativo: { bg: '#f1f5f9', color: '#475569' },
+                      afastado: { bg: '#ffedd5', color: '#c2410c' },
+                      desligado: { bg: '#fee2e2', color: '#dc2626' }
+                    }[situacao] || { bg: '#f1f5f9', color: '#475569' };
+
                     return (
                       <tr
                         key={emp.id}
@@ -382,12 +391,14 @@ create policy convites_demo on public.convites for all to anon, authenticated
                           </div>
                         </td>
 
-                        {/* E-mail & Telefone */}
+                        {/* E-mail & CPF / Telefone */}
                         <td style={{ padding: '12px 16px', color: '#475569' }}>
                           <div>{emp.email}</div>
-                          {emp.phone && emp.phone !== '-' && (
-                            <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{emp.phone}</div>
-                          )}
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            {emp.cpf ? `CPF: ${emp.cpf}` : ''}
+                            {emp.cpf && emp.phone && emp.phone !== '-' ? ' • ' : ''}
+                            {emp.phone && emp.phone !== '-' ? emp.phone : ''}
+                          </div>
                         </td>
 
                         {/* Departamento / Setor */}
@@ -404,19 +415,43 @@ create policy convites_demo on public.convites for all to anon, authenticated
                           </span>
                         </td>
 
-                        {/* Situação (ativo / convidado) */}
+                        {/* Papel (papel_usuario) */}
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                           <span style={{
-                            background: situacao === 'ativo' ? '#dcfce7' : '#fef3c7',
-                            color: situacao === 'ativo' ? '#15803d' : '#b45309',
+                            background: '#eff6ff',
+                            color: '#1d4ed8',
                             padding: '3px 8px',
                             borderRadius: '999px',
                             fontSize: '0.71rem',
-                            fontWeight: 700,
-                            textTransform: 'capitalize'
+                            fontWeight: 700
                           }}>
-                            {situacao}
+                            {papel}
                           </span>
+                        </td>
+
+                        {/* Situação (situacao_usuario: convidado, ativo, inativo, afastado, desligado) */}
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <select
+                            value={situacao}
+                            onChange={(e) => updateEmployee(emp.id, { ...emp, situacao: e.target.value })}
+                            style={{
+                              background: situacaoStyles.bg,
+                              color: situacaoStyles.color,
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: '999px',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                            title="Alterar situação do usuário (ativo, inativo, afastado, desligado)"
+                          >
+                            <option value="convidado">convidado</option>
+                            <option value="ativo">ativo</option>
+                            <option value="inativo">inativo</option>
+                            <option value="afastado">afastado</option>
+                            <option value="desligado">desligado</option>
+                          </select>
                         </td>
 
                         {/* Média Passos/Dia */}
@@ -425,38 +460,6 @@ create policy convites_demo on public.convites for all to anon, authenticated
                             <Footprints size={14} color="#16a34a" />
                             <span>{(emp.avgSteps || 0).toLocaleString('pt-BR')}</span>
                           </div>
-                        </td>
-
-                        {/* Atendimentos NR-1 */}
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '3px 8px',
-                            borderRadius: '999px',
-                            background: emp.nr1Attends > 0 ? '#eff6ff' : '#f8fafc',
-                            color: emp.nr1Attends > 0 ? '#2563eb' : '#94a3b8',
-                            fontSize: '0.74rem',
-                            fontWeight: 700
-                          }}>
-                            <HeartPulse size={12} />
-                            <span>{emp.nr1Attends || 0}</span>
-                          </span>
-                        </td>
-
-                        {/* Tempo de Meditação */}
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontSize: '0.76rem',
-                            color: '#64748b'
-                          }}>
-                            <Timer size={13} color="#ea580c" />
-                            <span>{emp.meditationTime || '0 min'}</span>
-                          </span>
                         </td>
 
                         {/* Saldo da Carteira */}
@@ -492,32 +495,33 @@ create policy convites_demo on public.convites for all to anon, authenticated
                                 fontSize: '0.75rem',
                                 border: '1px solid #cbd5e1'
                               }}
-                              title={`Editar dados de ${emp.name}`}
+                              title={`Editar dados, papel ou situação de ${emp.name}`}
                             >
                               <Edit3 size={13} />
                             </button>
 
-                            {emp.password && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setWelcomeEmployeeData(emp);
-                                  setIsWelcomeEmailOpen(true);
-                                }}
-                                className="btn-secondary"
-                                style={{
-                                  padding: '6px 8px',
-                                  borderRadius: '8px',
-                                  fontSize: '0.75rem',
-                                  border: '1px solid #bbf7d0',
-                                  background: '#f0fdf4',
-                                  color: '#15803d'
-                                }}
-                                title={`Ver E-mail de Boas-Vindas e Senha de ${emp.name}`}
-                              >
-                                <Mail size={13} />
-                              </button>
-                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setWelcomeEmployeeData({
+                                  ...emp,
+                                  password: emp.password || 'Consulte convite inicial'
+                                });
+                                setIsWelcomeEmailOpen(true);
+                              }}
+                              className="btn-secondary"
+                              style={{
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.75rem',
+                                border: '1px solid #bbf7d0',
+                                background: '#f0fdf4',
+                                color: '#15803d'
+                              }}
+                              title={`Enviar E-mail de Boas-Vindas e Link do App para ${emp.name}`}
+                            >
+                              <Mail size={13} />
+                            </button>
                           </div>
                         </td>
                       </tr>

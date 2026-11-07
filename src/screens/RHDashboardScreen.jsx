@@ -16,6 +16,8 @@ import {
 
 export default function RHDashboardScreen() {
   const {
+    user,
+    setCurrentScreen,
     switchToRole,
     logoutRh,
     showToast,
@@ -82,6 +84,24 @@ export default function RHDashboardScreen() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {user?.papel === 'admin_plataforma' && (
+            <button
+              onClick={() => setCurrentScreen('admin_companies')}
+              className="btn-secondary"
+              style={{
+                padding: '8px 14px',
+                fontSize: '0.8rem',
+                background: '#eff6ff',
+                borderColor: '#93c5fd',
+                color: '#1d4ed8',
+                fontWeight: 700
+              }}
+              title="Voltar para a tela de Empresas Cadastradas (admin_plataforma)"
+            >
+              <ArrowLeft size={14} />
+              <span>Empresas Cadastradas</span>
+            </button>
+          )}
           <button
             onClick={handleConsolidateCycle}
             disabled={isConsolidating}

@@ -23,7 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
-# Environment Variables
+# Environment Variables & Local Secrets (NEVER commit credentials)
 .env
 .env.local
 .env.*.local
+*.local.sql
+sql/*.local.sql
+scripts/*.local.*

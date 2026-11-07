@@ -5,7 +5,6 @@ import {
   mockRewards,
   healthProfessionals as initialHealthProfessionals,
   nr1ComplianceReport as initialNr1ComplianceReport,
-  initialEmployeesList,
   meditationSessions as initialMeditationSessions,
   burnoutQuestions as initialBurnoutQuestions
 } from '../data/mockData';
@@ -16,6 +15,11 @@ import {
   signInWithSupabase,
   signOutSupabase,
   fetchCompanyFromSupabase,
+  fetchAllCompaniesFromSupabase,
+  createCompanyAndResponsibleInSupabase,
+  updateCompanyAndResponsibleInSupabase,
+  fetchActiveTermFromSupabase,
+  acceptTermInSupabase,
   fetchSectorsFromSupabase,
   fetchEmployeesFromSupabase,
   saveEmployeeToSupabase,
@@ -42,36 +46,40 @@ export function AppProvider({ children }) {
   // Active Tenant (empresa_id)
   const [empresaId, setEmpresaId] = useState(DEFAULT_EMPRESA_ID);
 
-  // Load saved user or initial
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('passo_saude_user');
-      return saved ? JSON.parse(saved) : initialUserData;
-    } catch {
-      return initialUserData;
-    }
-  });
+  // Load saved user or clean default (starts unauthenticated until real login)
+  const [user, setUser] = useState(() => ({
+    ...initialUserData,
+    id: null,
+    name: '',
+    initials: 'PS',
+    email: '',
+    phone: '',
+    department: '',
+    role: 'Colaborador',
+    papel: 'colaborador',
+    situacao: 'ativo',
+    aceitouTermoEm: null,
+    stepsToday: 0,
+    coins: 0,
+    dailyCoinsToday: 0,
+    distanceKm: 0,
+    caloriesKcal: 0,
+    activeMinutes: 0
+  }));
+
+  // Registered Companies (public.empresas) for admin_plataforma
+  const [companiesList, setCompaniesList] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+
+  // Term of Responsibility (public.termos & public.aceites_termo)
+  const [activeTerm, setActiveTerm] = useState(null);
+  const [needsTermAcceptance, setNeedsTermAcceptance] = useState(false);
 
   // Corporate Sectors (public.setores)
-  const [sectorsList, setSectorsList] = useState([
-    { id: '22222222-2222-2222-2222-222222222201', nome: 'Tecnologia', ghe: 'GHE-01-TEC' },
-    { id: '22222222-2222-2222-2222-222222222202', nome: 'Operações & Logística', ghe: 'GHE-02-OPE' },
-    { id: '22222222-2222-2222-2222-222222222203', nome: 'Comercial & Vendas', ghe: 'GHE-03-COM' },
-    { id: '22222222-2222-2222-2222-222222222204', nome: 'Recursos Humanos', ghe: 'GHE-04-RH' },
-    { id: '22222222-2222-2222-2222-222222222205', nome: 'Financeiro & Jurídico', ghe: 'GHE-05-FIN' },
-    { id: '22222222-2222-2222-2222-222222222206', nome: 'Marketing & Produto', ghe: 'GHE-06-MKT' },
-    { id: '22222222-2222-2222-2222-222222222207', nome: 'Administrativo / Geral', ghe: 'GHE-07-ADM' }
-  ]);
+  const [sectorsList, setSectorsList] = useState([]);
 
-  // Corporate Employees & Invites List (public.usuarios + public.convites)
-  const [employeesList, setEmployeesList] = useState(() => {
-    try {
-      const saved = localStorage.getItem('passo_saude_employees');
-      return saved ? JSON.parse(saved) : initialEmployeesList;
-    } catch {
-      return initialEmployeesList;
-    }
-  });
+  // Corporate Employees & Invites List (public.usuarios + public.convites) — NO MOCK DATA
+  const [employeesList, setEmployeesList] = useState([]);
 
   // Dynamic Catalogs from the 6 Database Domains
   const [rewardsCatalog, setRewardsCatalog] = useState(mockRewards);
@@ -81,15 +89,6 @@ export function AppProvider({ children }) {
   const [nr1ComplianceReport, setNr1ComplianceReport] = useState(initialNr1ComplianceReport);
   const [coinTransactions, setCoinTransactions] = useState([]);
   const [isDatabaseConnected, setIsDatabaseConnected] = useState(false);
-
-  // Save employees to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('passo_saude_employees', JSON.stringify(employeesList));
-    } catch (e) {
-      console.warn('Could not save employees to localStorage:', e);
-    }
-  }, [employeesList]);
 
   // Hardware sensor states
   const [isMotionSensorActive, setIsMotionSensorActive] = useState(false);
@@ -101,29 +100,21 @@ export function AppProvider({ children }) {
   // Current view role: 'colaborador' or 'rh'
   const [currentRole, setCurrentRole] = useState('colaborador');
 
-  // Active Screen
-  const [currentScreen, setCurrentScreen] = useState('home');
+  // Active Screen (starts on 'login' for real testing without mock session)
+  const [currentScreen, setCurrentScreen] = useState('login');
 
   // Is Logged in?
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Viewport mode: 'mobile-mockup' or 'full-responsive'
-  const [deviceFrameMode, setDeviceFrameMode] = useState('mobile-mockup');
+  const [deviceFrameMode, setDeviceFrameMode] = useState('full-responsive');
 
   // Burnout quiz state
-  const [burnoutAnswers, setBurnoutAnswers] = useState([1, 2]);
+  const [burnoutAnswers, setBurnoutAnswers] = useState([]);
   const [isBurnoutModalOpen, setIsBurnoutModalOpen] = useState(false);
 
   // Redeemed Rewards (public.resgates)
-  const [redeemedRewards, setRedeemedRewards] = useState([
-    {
-      id: 'rew_1',
-      name: 'Squeeze Personalizada Passos Saúde',
-      date: '10/10/2026',
-      status: 'Entregue pelo RH',
-      coinsSpent: 200
-    }
-  ]);
+  const [redeemedRewards, setRedeemedRewards] = useState([]);
   const [lastRedeemedItem, setLastRedeemedItem] = useState(null);
   const [isRedemptionModalOpen, setIsRedemptionModalOpen] = useState(false);
 
@@ -143,21 +134,27 @@ export function AppProvider({ children }) {
   const [isRhAuthenticated, setIsRhAuthenticated] = useState(false);
   const [isRhLoginModalOpen, setIsRhLoginModalOpen] = useState(false);
 
-  // Save user changes to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('passo_saude_user', JSON.stringify(user));
-    } catch (e) {
-      console.warn('Could not save to localStorage:', e);
-    }
-  }, [user]);
-
   const showToast = useCallback((message, type = 'success') => {
     setToastMessage({ message, type, id: Date.now() });
     setTimeout(() => {
       setToastMessage(null);
-    }, 4000);
+    }, 4500);
   }, []);
+
+  /**
+   * Busca a lista completa de empresas cadastradas em public.empresas (com usuário responsável rh_admin)
+   */
+  const refreshCompaniesList = useCallback(async () => {
+    const res = await fetchAllCompaniesFromSupabase();
+    if (res.success && Array.isArray(res.data)) {
+      setCompaniesList(res.data);
+      setIsDatabaseConnected(true);
+      if (res.data.length > 0 && !selectedCompanyId) {
+        setSelectedCompanyId(res.data[0].id);
+      }
+    }
+    return res;
+  }, [selectedCompanyId]);
 
   /**
    * Carrega todos os catálogos, setores, colaboradores e relatórios da nova arquitetura do Supabase
@@ -172,7 +169,8 @@ export function AppProvider({ children }) {
         psychologistsRes,
         meditationsRes,
         burnoutInstRes,
-        nr1Res
+        nr1Res,
+        termRes
       ] = await Promise.all([
         fetchCompanyFromSupabase(targetEmpresaId),
         fetchSectorsFromSupabase(targetEmpresaId),
@@ -181,39 +179,29 @@ export function AppProvider({ children }) {
         fetchPsychologistsFromSupabase(),
         fetchMeditationsFromSupabase(),
         fetchBurnoutInstrumentFromSupabase(),
-        fetchNr1ComplianceDataFromSupabase(targetEmpresaId)
+        fetchNr1ComplianceDataFromSupabase(targetEmpresaId),
+        fetchActiveTermFromSupabase()
       ]);
 
       let connected = false;
+
+      if (termRes.success && termRes.data) {
+        setActiveTerm(termRes.data);
+      }
 
       if (companyRes.success && companyRes.data) {
         connected = true;
         if (companyRes.data.id) setEmpresaId(companyRes.data.id);
       }
 
-      if (sectorsRes.success && sectorsRes.data?.length > 0) {
+      if (sectorsRes.success && Array.isArray(sectorsRes.data)) {
         connected = true;
         setSectorsList(sectorsRes.data);
       }
 
-      if (employeesRes.success && employeesRes.data?.length > 0) {
+      if (employeesRes.success && Array.isArray(employeesRes.data)) {
         connected = true;
-        // Preserva médias/saldos mockados caso o convite ainda não tenha histórico de passos
-        setEmployeesList(prev => {
-          const prevByEmail = new Map((prev || []).map(p => [(p.email || '').toLowerCase(), p]));
-          return employeesRes.data.map(dbEmp => {
-            const localMatch = prevByEmail.get((dbEmp.email || '').toLowerCase());
-            return {
-              ...localMatch,
-              ...dbEmp,
-              phone: dbEmp.phone && dbEmp.phone !== '-' ? dbEmp.phone : (localMatch?.phone || '(11) 98765-4321'),
-              avgSteps: dbEmp.avgSteps > 0 ? dbEmp.avgSteps : (localMatch?.avgSteps || 0),
-              nr1Attends: dbEmp.nr1Attends > 0 ? dbEmp.nr1Attends : (localMatch?.nr1Attends || 0),
-              meditationTime: dbEmp.meditationTime !== '0 min' ? dbEmp.meditationTime : (localMatch?.meditationTime || '0 min'),
-              pointsBalance: dbEmp.pointsBalance > 0 ? dbEmp.pointsBalance : (localMatch?.pointsBalance || 0)
-            };
-          });
-        });
+        setEmployeesList(employeesRes.data);
       }
 
       if (benefitsRes.success && benefitsRes.data?.length > 0) {
@@ -254,10 +242,98 @@ export function AppProvider({ children }) {
     }
   }, [empresaId]);
 
-  // Inicializa conexão com o banco ao montar o App
+  // Inicializa termo ativo ao montar o App
   useEffect(() => {
-    refreshDatabaseData(DEFAULT_EMPRESA_ID);
-  }, [refreshDatabaseData]);
+    fetchActiveTermFromSupabase().then((res) => {
+      if (res.success && res.data) setActiveTerm(res.data);
+    });
+  }, []);
+
+  /**
+   * Cadastra nova empresa e usuário responsável (rh_admin) — exclusivo para admin_plataforma
+   */
+  const createCompanyWithResponsible = async ({ companyData, responsibleData }) => {
+    const res = await createCompanyAndResponsibleInSupabase({
+      companyData,
+      responsibleData,
+      adminUserId: user?.id
+    });
+
+    if (res.success && res.data) {
+      await refreshCompaniesList();
+      if (res.data.id) {
+        setSelectedCompanyId(res.data.id);
+      }
+      showToast(`Empresa "${res.data.razao_social}" e responsável RH Admin cadastrados com sucesso!`);
+    } else {
+      showToast(res.error || 'Erro ao cadastrar empresa no Supabase.', 'error');
+    }
+
+    return res;
+  };
+
+  /**
+   * Edita cadastro da empresa e do usuário responsável (rh_admin) — exclusivo para admin_plataforma
+   */
+  const updateCompanyWithResponsible = async (targetEmpresaId, { companyData, responsibleData }) => {
+    const res = await updateCompanyAndResponsibleInSupabase(targetEmpresaId, {
+      companyData,
+      responsibleData,
+      adminUserId: user?.id
+    });
+
+    if (res.success) {
+      await refreshCompaniesList();
+      showToast('Cadastro da empresa e do responsável atualizado com sucesso!');
+    } else {
+      showToast(res.error || 'Erro ao atualizar empresa no Supabase.', 'error');
+    }
+
+    return res;
+  };
+
+  /**
+   * Aceite do Termo de Responsabilidade:
+   * Grava em public.aceites_termo e altera situacao_usuario de 'convidado' para 'ativo'
+   */
+  const acceptResponsibilityTerm = async () => {
+    const res = await acceptTermInSupabase({
+      termoId: activeTerm?.id,
+      usuarioId: user?.id,
+      empresaId: user?.empresaId || empresaId,
+      email: user?.email
+    });
+
+    const nowIso = new Date().toISOString();
+    setUser(prev => ({
+      ...prev,
+      situacao: 'ativo',
+      aceitouTermoEm: nowIso
+    }));
+    setNeedsTermAcceptance(false);
+
+    await refreshDatabaseData(user?.empresaId || empresaId);
+    if (user?.papel === 'admin_plataforma') {
+      await refreshCompaniesList();
+    }
+
+    showToast('Termo de Responsabilidade aceito! Sua situação agora é ATIVO.');
+
+    if (user?.papel === 'admin_plataforma') {
+      setIsRhAuthenticated(true);
+      setCurrentRole('rh');
+      setCurrentScreen('admin_companies');
+    } else if (['rh_admin', 'rh_operador'].includes(user?.papel)) {
+      setIsRhAuthenticated(true);
+      setCurrentRole('rh');
+      setCurrentScreen('rh_dashboard');
+    } else {
+      setCurrentRole('colaborador');
+      setCurrentScreen('home');
+    }
+
+    return res;
+  };
 
   // Record Real Physical Steps & Sync with public.registros_passos
   const recordRealSteps = useCallback((count = 1, cadence = 0) => {
@@ -422,23 +498,24 @@ export function AppProvider({ children }) {
       const res = await saveEmployeeToSupabase(newEmp, empresaId);
       if (res.success) {
         const dbId = res.data?.usuario_id || res.data?.id || newEmp.id;
-        const dbSituacao = res.data?.usuario_id ? 'ativo' : 'convidado';
-        setEmployeesList(prev => prev.map(e => e.id === newEmp.id ? {
-          ...e,
+        // O usuário convidado permanece com situacao = 'convidado' até aceitar o Termo de Responsabilidade
+        const updatedEmp = {
+          ...newEmp,
           id: dbId,
           usuarioId: res.data?.usuario_id || null,
           conviteId: res.data?.id || null,
-          situacao: dbSituacao
-        } : e));
-        showToast(`Colaborador(a) ${newEmp.name} registrado(a) em convites/usuários no Supabase!`, 'success');
-      } else if (res.isRlsError) {
-        showToast(`Salvo localmente! Execute o script seed_dados_iniciais.sql no Supabase.`, 'error');
+          situacao: 'convidado'
+        };
+        setEmployeesList(prev => prev.map(e => e.id === newEmp.id ? updatedEmp : e));
+        await refreshDatabaseData(empresaId);
+        showToast(`Usuário ${newEmp.name} (${newEmp.papel}) cadastrado com situação "convidado"!`, 'success');
+        return updatedEmp;
       } else {
-        showToast(`Salvo localmente. Aviso Supabase: ${res.error || 'Verifique as tabelas'}`, 'error');
+        showToast(`Aviso Supabase: ${res.error || 'Verifique as tabelas e permissões RLS'}`, 'error');
       }
     } catch (err) {
       console.warn('Erro ao sincronizar com Supabase:', err);
-      showToast(`Colaborador(a) ${newEmp.name} cadastrado(a) localmente.`, 'success');
+      showToast(`Erro ao sincronizar usuário com o Supabase.`, 'error');
     }
 
     return newEmp;
@@ -446,17 +523,10 @@ export function AppProvider({ children }) {
 
   // Sync all local employees to Supabase (public.setores + public.convites)
   const syncEmployeesWithSupabase = async () => {
-    showToast('Sincronizando setores, convites e colaboradores com o Supabase...', 'info');
-    const res = await syncAllEmployeesToSupabase(employeesList, empresaId);
-    if (res.isRlsError) {
-      showToast('Acesso bloqueado por RLS. Execute os scripts SQL da pasta sql/ no Supabase.', 'error');
-    } else if (res.successCount > 0) {
-      await refreshDatabaseData(empresaId);
-      showToast(`${res.successCount} colaboradores sincronizados na nova arquitetura do Supabase!`, 'success');
-    } else {
-      showToast(`Aviso na sincronização: ${res.lastError || 'Verifique sua conexão'}`, 'error');
-    }
-    return res;
+    showToast('Sincronizando setores, convites e usuários com o Supabase...', 'info');
+    await refreshDatabaseData(empresaId);
+    showToast('Dados sincronizados com o Supabase!', 'success');
+    return { success: true };
   };
 
   // Update corporate employee (public.usuarios / public.convites)
@@ -471,10 +541,14 @@ export function AppProvider({ children }) {
       return emp;
     }));
 
-    showToast('Cadastro de colaborador atualizado com sucesso!');
-
     try {
-      await updateEmployeeInSupabase(id, updatedFields, empresaId);
+      const res = await updateEmployeeInSupabase(id, updatedFields, empresaId);
+      if (res.success) {
+        showToast('Cadastro e situação do usuário atualizados no Supabase!');
+        await refreshDatabaseData(empresaId);
+      } else {
+        showToast(res.error || 'Erro ao atualizar usuário no Supabase.', 'error');
+      }
     } catch (err) {
       console.warn('Erro ao atualizar no Supabase:', err);
     }
@@ -551,7 +625,6 @@ export function AppProvider({ children }) {
       return false;
     }
 
-    // Se o usuário estiver autenticado no Supabase com UUID válido, tenta usar a RPC atômica fn_resgatar_beneficio
     if (isValidUuid(user.id) && isValidUuid(reward.id)) {
       const rpcRes = await redeemBenefitInSupabase({ beneficioId: reward.id });
       if (rpcRes.success && rpcRes.data?.novo_saldo !== undefined) {
@@ -682,42 +755,84 @@ export function AppProvider({ children }) {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    // Tenta autenticar via Supabase Auth caso o usuário exista em auth.users
-    const sbAuth = await signInWithSupabase(cleanEmail, cleanPass);
-    if (sbAuth.success && sbAuth.profile) {
-      if (['rh_operador', 'rh_admin', 'admin_plataforma'].includes(sbAuth.profile.papel)) {
-        setIsRhAuthenticated(true);
-        setCurrentRole('rh');
-        setCurrentScreen('rh_dashboard');
-        setIsRhLoginModalOpen(false);
-        await refreshDatabaseData(sbAuth.profile.empresaId);
-        showToast('Acesso autorizado via Supabase Auth ao Painel de Gestão SST & NR-1!');
-        return { success: true };
-      }
+    if (!cleanEmail || !cleanPass) {
+      return { success: false, error: 'Informe o e-mail e a senha de acesso.' };
     }
 
-    // Fallback para credencial delegada da empresa (Demo/Simulador)
-    if (cleanEmail === 'techcorpbr@gmail.com' && cleanPass === '123456') {
-      setIsRhAuthenticated(true);
-      setCurrentRole('rh');
-      setCurrentScreen('rh_dashboard');
-      setIsRhLoginModalOpen(false);
-      refreshDatabaseData(empresaId);
-      showToast('Acesso autorizado ao Painel de Gestão Ocupacional & SST!');
+    const sbAuth = await signInWithSupabase(cleanEmail, cleanPass);
+    if (!sbAuth.success || !sbAuth.profile) {
+      return {
+        success: false,
+        error: sbAuth.error || 'E-mail ou senha incorretos no Supabase Auth.'
+      };
+    }
+
+    const profile = sbAuth.profile;
+
+    // Bloqueia acesso se situação for inativo, afastado ou desligado
+    if (['inativo', 'afastado', 'desligado'].includes(profile.situacao)) {
+      signOutSupabase();
+      return {
+        success: false,
+        error: `Acesso bloqueado: a situação deste usuário consta como "${profile.situacao}".`
+      };
+    }
+
+    // Verifica se possui papel de gestão RH ou Admin da Plataforma
+    if (!['rh_operador', 'rh_admin', 'admin_plataforma'].includes(profile.papel)) {
+      signOutSupabase();
+      return {
+        success: false,
+        error: `Acesso restrito ao módulo Gestor RH. Seu papel atual é "${profile.papel}". Utilize o login principal do App.`
+      };
+    }
+
+    const targetEmpresaId = profile.empresaId || DEFAULT_EMPRESA_ID;
+    setEmpresaId(targetEmpresaId);
+    setUser(prev => ({
+      ...prev,
+      ...profile,
+      initials: profile.name
+        ? profile.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+        : 'RH'
+    }));
+
+    setIsAuthenticated(true);
+    setIsRhAuthenticated(true);
+    setCurrentRole('rh');
+    setIsRhLoginModalOpen(false);
+
+    // Se o usuário estiver com situação 'convidado' (ou ainda não tiver aceito o termo), exibe a tela do Termo de Responsabilidade!
+    if (profile.papel !== 'admin_plataforma' && (profile.situacao === 'convidado' || !profile.aceitouTermoEm)) {
+      const termRes = await fetchActiveTermFromSupabase();
+      if (termRes.success && termRes.data) setActiveTerm(termRes.data);
+      setNeedsTermAcceptance(true);
+      setCurrentScreen('termo_responsabilidade');
+      showToast('Bem-vindo(a)! Leia e aceite o Termo de Responsabilidade para ativar seu acesso.');
       return { success: true };
     }
 
-    return {
-      success: false,
-      error: 'E-mail ou senha incorretos. Acesso restrito aos usuários delegados pela empresa (rh_operador / rh_admin).'
-    };
+    setNeedsTermAcceptance(false);
+
+    if (profile.papel === 'admin_plataforma') {
+      await refreshCompaniesList();
+      await refreshDatabaseData(targetEmpresaId);
+      setCurrentScreen('admin_companies');
+      showToast(`Bem-vindo, ${profile.name} (Admin da Plataforma)!`);
+    } else {
+      await refreshDatabaseData(targetEmpresaId);
+      setCurrentScreen('rh_dashboard');
+      showToast(`Bem-vindo(a) ao Módulo Gestor RH, ${profile.name}!`);
+    }
+
+    return { success: true };
   };
 
   const logoutRh = () => {
     setIsRhAuthenticated(false);
     setCurrentRole('colaborador');
-    setCurrentScreen('home');
-    showToast('Sessão do Painel de Gestão encerrada.');
+    setCurrentScreen(isAuthenticated ? 'home' : 'login');
+    showToast('Sessão do Módulo Gestor RH encerrada.');
   };
 
   // Switch role with access control
@@ -728,10 +843,19 @@ export function AppProvider({ children }) {
         return;
       }
       setCurrentRole('rh');
-      setCurrentScreen('rh_dashboard');
+      if (user?.papel === 'admin_plataforma') {
+        setCurrentScreen('admin_companies');
+      } else {
+        setCurrentScreen('rh_dashboard');
+      }
     } else {
+      if (!isAuthenticated) {
+        setCurrentRole('colaborador');
+        setCurrentScreen('login');
+        return;
+      }
       setCurrentRole('colaborador');
-      setCurrentScreen('home');
+      setCurrentScreen(needsTermAcceptance ? 'termo_responsabilidade' : 'home');
     }
   };
 
@@ -740,68 +864,118 @@ export function AppProvider({ children }) {
     signOutSupabase();
     setIsAuthenticated(false);
     setIsRhAuthenticated(false);
+    setNeedsTermAcceptance(false);
     setCurrentRole('colaborador');
     setCurrentScreen('login');
   };
 
-  // Login (Real Supabase Auth + Hybrid Demo Mode)
+  // Login principal do App (Supabase Auth Real — sem dados mockados)
   const handleLogin = async (role = 'colaborador', credentials = null) => {
-    if (credentials?.email && credentials?.password) {
-      const sbAuth = await signInWithSupabase(credentials.email, credentials.password);
-      if (sbAuth.success && sbAuth.profile) {
-        setUser(prev => ({
-          ...prev,
-          ...sbAuth.profile,
-          initials: sbAuth.profile.name
-            ? sbAuth.profile.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
-            : 'AC'
-        }));
-        const walletRes = await fetchWalletAndTransactionsFromSupabase(sbAuth.profile.id);
-        if (walletRes.success) {
-          setCoinTransactions(walletRes.transactions || []);
-        }
-      } else {
-        // Verifica se o e-mail corresponde a algum colaborador carregado de public.usuarios / public.convites
-        const matchedEmp = employeesList.find(
-          e => (e.email || '').toLowerCase() === credentials.email.trim().toLowerCase()
-        );
-        if (matchedEmp) {
-          setUser(prev => ({
-            ...prev,
-            id: matchedEmp.id,
-            name: matchedEmp.name,
-            initials: matchedEmp.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase(),
-            email: matchedEmp.email,
-            phone: matchedEmp.phone !== '-' ? matchedEmp.phone : prev.phone,
-            department: matchedEmp.department,
-            role: matchedEmp.cargo || prev.role,
-            coins: matchedEmp.pointsBalance || prev.coins
-          }));
-        }
+    if (role === 'rh' && !credentials) {
+      if (!isRhAuthenticated) {
+        openRhLoginModal();
+        return { success: true };
       }
+      setCurrentRole('rh');
+      setCurrentScreen(user?.papel === 'admin_plataforma' ? 'admin_companies' : 'rh_dashboard');
+      return { success: true };
+    }
+
+    if (!credentials?.email || !credentials?.password) {
+      setCurrentScreen('login');
+      return { success: false, error: 'Informe seu e-mail e sua senha para entrar.' };
+    }
+
+    const sbAuth = await signInWithSupabase(credentials.email, credentials.password);
+    if (!sbAuth.success || !sbAuth.profile) {
+      return {
+        success: false,
+        error: sbAuth.error || 'E-mail ou senha inválidos.'
+      };
+    }
+
+    const profile = sbAuth.profile;
+
+    // Bloqueia acesso se situação for inativo, afastado ou desligado
+    if (['inativo', 'afastado', 'desligado'].includes(profile.situacao)) {
+      signOutSupabase();
+      return {
+        success: false,
+        error: `Acesso não permitido: sua situação cadastral está como "${profile.situacao}". Procure o RH da sua empresa.`
+      };
+    }
+
+    const targetEmpresaId = profile.empresaId || DEFAULT_EMPRESA_ID;
+    setEmpresaId(targetEmpresaId);
+    setUser(prev => ({
+      ...prev,
+      ...profile,
+      initials: profile.name
+        ? profile.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+        : 'US'
+    }));
+
+    const walletRes = await fetchWalletAndTransactionsFromSupabase(profile.id);
+    if (walletRes.success) {
+      setCoinTransactions(walletRes.transactions || []);
     }
 
     setIsAuthenticated(true);
-    if (role === 'rh') {
-      if (!isRhAuthenticated) {
-        openRhLoginModal();
-        return;
+
+    // Se o usuário estiver com situação 'convidado' (ou ainda não aceitou o Termo), abre "O Termo de Responsabilidade"
+    if (profile.papel !== 'admin_plataforma' && (profile.situacao === 'convidado' || !profile.aceitouTermoEm)) {
+      const termRes = await fetchActiveTermFromSupabase();
+      if (termRes.success && termRes.data) setActiveTerm(termRes.data);
+      setNeedsTermAcceptance(true);
+      if (['rh_admin', 'rh_operador'].includes(profile.papel)) {
+        setIsRhAuthenticated(true);
+        setCurrentRole('rh');
+      } else {
+        setCurrentRole('colaborador');
       }
-      setCurrentRole('rh');
-      setCurrentScreen('rh_dashboard');
-    } else {
-      setCurrentRole('colaborador');
-      setCurrentScreen('home');
+      setCurrentScreen('termo_responsabilidade');
+      showToast(`Olá, ${profile.name}! Aceite o Termo de Responsabilidade para ativar sua conta.`);
+      return { success: true };
     }
-    showToast(`Olá, ${user.name}! Bem-vindo(a) ao Passo é Saúde!`);
+
+    setNeedsTermAcceptance(false);
+    await refreshDatabaseData(targetEmpresaId);
+
+    if (profile.papel === 'admin_plataforma') {
+      setIsRhAuthenticated(true);
+      setCurrentRole('rh');
+      await refreshCompaniesList();
+      setCurrentScreen('admin_companies');
+      showToast(`Olá, ${profile.name}! Painel de Empresas carregado.`);
+      return { success: true };
+    }
+
+    if (['rh_admin', 'rh_operador'].includes(profile.papel)) {
+      setIsRhAuthenticated(true);
+    }
+
+    setCurrentRole('colaborador');
+    setCurrentScreen('home');
+    showToast(`Olá, ${profile.name}! Bem-vindo(a) ao Passo é Saúde!`);
+    return { success: true };
   };
 
   return (
     <AppContext.Provider
       value={{
         empresaId,
+        setEmpresaId,
         isDatabaseConnected,
         refreshDatabaseData,
+        companiesList,
+        selectedCompanyId,
+        setSelectedCompanyId,
+        refreshCompaniesList,
+        createCompanyWithResponsible,
+        updateCompanyWithResponsible,
+        activeTerm,
+        needsTermAcceptance,
+        acceptResponsibilityTerm,
         sectorsList,
         user,
         setUser,

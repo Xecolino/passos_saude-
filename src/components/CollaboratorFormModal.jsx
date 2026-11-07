@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, User, Mail, Phone, Building2, Save, Database, UserPlus, Check, Briefcase, CreditCard, Hash, Shield } from 'lucide-react';
+import { X, User, Mail, Phone, Building2, Save, Database, UserPlus, Check, Briefcase, CreditCard, Hash, Shield, Activity } from 'lucide-react';
 import { generateRandomPassword } from '../utils/passwordGenerator';
 
 const DEFAULT_DEPARTMENTS = [
@@ -23,7 +23,7 @@ export default function CollaboratorFormModal({
   const { addEmployee, updateEmployee, sectorsList } = useApp();
 
   const departmentOptions = sectorsList && sectorsList.length > 0
-    ? sectorsList.map(s => s.nome)
+    ? Array.from(new Set([...sectorsList.map(s => s.nome), ...DEFAULT_DEPARTMENTS]))
     : DEFAULT_DEPARTMENTS;
 
   const [formData, setFormData] = useState({
@@ -34,10 +34,12 @@ export default function CollaboratorFormModal({
     matricula: '',
     cargo: '',
     papel: 'colaborador',
+    situacao: 'convidado',
     department: 'Tecnologia'
   });
 
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -49,7 +51,8 @@ export default function CollaboratorFormModal({
           cpf: initialData.cpf || '',
           matricula: initialData.matricula || '',
           cargo: initialData.cargo || initialData.role || '',
-          papel: initialData.papel || 'colaborador',
+          papel: initialData.papel && initialData.papel !== 'admin_plataforma' ? initialData.papel : 'colaborador',
+          situacao: initialData.situacao || 'ativo',
           department: initialData.department || 'Tecnologia'
         });
       } else {
@@ -61,10 +64,12 @@ export default function CollaboratorFormModal({
           matricula: '',
           cargo: '',
           papel: 'colaborador',
-          department: 'Tecnologia'
+          situacao: 'convidado',
+          department: departmentOptions[0] || 'Tecnologia'
         });
       }
       setErrors({});
+      setIsSubmitting(false);
     }
   }, [isOpen, mode, initialData]);
 
@@ -80,8 +85,8 @@ export default function CollaboratorFormModal({
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'E-mail inválido.';
     }
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Telefone é obrigatório.';
+    if (!formData.department.trim()) {
+      newErrors.department = 'Setor é obrigatório.';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -91,19 +96,25 @@ export default function CollaboratorFormModal({
     e.preventDefault();
     if (!validate()) return;
 
-    if (mode === 'edit' && initialData) {
-      await updateEmployee(initialData.id, formData);
-      if (onSuccess) onSuccess({ ...initialData, ...formData });
-    } else {
-      // Cria aleatoriamente uma senha de 6 a 8 caracteres (letras, números e símbolos)
-      const generatedPassword = generateRandomPassword(6, 8);
-      const created = await addEmployee({
-        ...formData,
-        password: generatedPassword
-      });
-      if (onSuccess) onSuccess({ ...created, password: generatedPassword });
+    setIsSubmitting(true);
+    try {
+      if (mode === 'edit' && initialData) {
+        await updateEmployee(initialData.id, formData);
+        if (onSuccess) onSuccess({ ...initialData, ...formData });
+      } else {
+        // Cria aleatoriamente uma senha provisória de 6 a 8 caracteres
+        const generatedPassword = generateRandomPassword(6, 8);
+        const created = await addEmployee({
+          ...formData,
+          situacao: 'convidado',
+          password: generatedPassword
+        });
+        if (onSuccess) onSuccess({ ...created, password: generatedPassword });
+      }
+      onClose();
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
   };
 
   return (
@@ -126,7 +137,7 @@ export default function CollaboratorFormModal({
         className="app-card"
         style={{
           width: '100%',
-          maxWidth: '520px',
+          maxWidth: '560px',
           maxHeight: '92vh',
           overflowY: 'auto',
           background: '#ffffff',
@@ -169,7 +180,7 @@ export default function CollaboratorFormModal({
                 {mode === 'edit' ? 'Edição de Dados (usuarios / convites)' : 'Onboarding Multi-Tenant SST'}
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
-                {mode === 'edit' ? 'Editar Colaborador' : 'Novo Colaborador / Convite'}
+                {mode === 'edit' ? 'Editar Usuário / Situação' : 'Novo Usuário / Convite'}
               </h3>
             </div>
           </div>
@@ -197,7 +208,7 @@ export default function CollaboratorFormModal({
         }}>
           <Database size={18} color="#15803d" style={{ flexShrink: 0 }} />
           <div style={{ fontSize: '0.75rem', color: '#166534', lineHeight: 1.35 }}>
-            <strong>Nova Arquitetura Supabase:</strong> Vincula automaticamente ao setor (<code>setores</code>), gera o convite (<code>convites</code>) e provisiona usuário + carteira (<code>usuarios</code> &amp; <code>carteiras</code>).
+            <strong>Controle de Acesso RH Admin:</strong> Vincula ao setor (<code>setores</code>), gera o convite (<code>convites</code>) e provisiona usuário em <code>usuarios</code> com situação inicial <code>convidado</code> até o aceite em <code>aceites_termo</code>.
           </div>
         </div>
 
@@ -249,7 +260,7 @@ export default function CollaboratorFormModal({
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Phone size={14} color="#15803d" />
-                <span>Telefone / WhatsApp *</span>
+                <span>Telefone / WhatsApp</span>
               </label>
               <input
                 type="tel"
@@ -257,13 +268,7 @@ export default function CollaboratorFormModal({
                 placeholder="(11) 98765-4321"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                style={{ borderColor: errors.phone ? '#ef4444' : undefined }}
               />
-              {errors.phone && (
-                <span style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: '2px', display: 'block' }}>
-                  {errors.phone}
-                </span>
-              )}
             </div>
           </div>
 
@@ -274,18 +279,19 @@ export default function CollaboratorFormModal({
                 <Building2 size={14} color="#15803d" />
                 <span>Setor / GHE (NR-1) *</span>
               </label>
-              <select
+              <input
+                type="text"
+                list="setores-datalist"
                 className="form-input"
+                placeholder="Selecione ou digite o setor"
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                style={{ cursor: 'pointer' }}
-              >
+              />
+              <datalist id="setores-datalist">
                 {departmentOptions.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
+                  <option key={dept} value={dept} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -303,8 +309,8 @@ export default function CollaboratorFormModal({
             </div>
           </div>
 
-          {/* CPF, Matrícula & Papel (Novas colunas de public.usuarios / public.convites) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+          {/* CPF & Matrícula */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <CreditCard size={13} color="#15803d" />
@@ -332,23 +338,60 @@ export default function CollaboratorFormModal({
                 onChange={(e) => setFormData({ ...formData, matricula: e.target.value })}
               />
             </div>
+          </div>
 
+          {/* Papel (papel_usuario) & Situação (situacao_usuario) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <Shield size={13} color="#15803d" />
-                <span>Papel</span>
+                <span>Papel (<code>papel_usuario</code>) *</span>
               </label>
               <select
                 className="form-input"
                 value={formData.papel}
                 onChange={(e) => setFormData({ ...formData, papel: e.target.value })}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', fontWeight: 700 }}
               >
-                <option value="colaborador">Colaborador</option>
-                <option value="gestor">Gestor</option>
-                <option value="rh_operador">RH Operador</option>
-                <option value="rh_admin">RH Admin</option>
+                <option value="colaborador">colaborador (Colaborador)</option>
+                <option value="gestor">gestor (Gestor)</option>
+                <option value="rh_operador">rh_operador (RH Operador)</option>
+                <option value="rh_admin">rh_admin (RH Admin)</option>
+                <option value="psicologo">psicologo (Psicólogo)</option>
               </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Activity size={13} color="#15803d" />
+                <span>Situação (<code>situacao_usuario</code>) *</span>
+              </label>
+              {mode === 'create' ? (
+                <div style={{
+                  padding: '9px 12px',
+                  borderRadius: '12px',
+                  background: '#fef3c7',
+                  border: '1px solid #fde68a',
+                  color: '#92400e',
+                  fontSize: '0.76rem',
+                  fontWeight: 700
+                }}>
+                  convidado → ativo (após Aceite)
+                </div>
+              ) : (
+                <select
+                  className="form-input"
+                  value={formData.situacao}
+                  onChange={(e) => setFormData({ ...formData, situacao: e.target.value })}
+                  style={{ cursor: 'pointer', fontWeight: 700 }}
+                >
+                  <option value="ativo">ativo (Ativo)</option>
+                  <option value="inativo">inativo (Inativo)</option>
+                  <option value="afastado">afastado (Afastado)</option>
+                  <option value="desligado">desligado (Desligado)</option>
+                  <option value="convidado">convidado (Aguardando Aceite)</option>
+                </select>
+              )}
             </div>
           </div>
 
@@ -373,11 +416,12 @@ export default function CollaboratorFormModal({
 
             <button
               type="submit"
+              disabled={isSubmitting}
               className="btn-primary"
               style={{ padding: '10px 22px', fontSize: '0.85rem' }}
             >
               <Check size={16} />
-              <span>{mode === 'edit' ? 'Salvar Alterações' : 'Salvar Cadastro'}</span>
+              <span>{isSubmitting ? 'Salvando...' : (mode === 'edit' ? 'Salvar Alterações' : 'Cadastrar & Enviar E-mail')}</span>
             </button>
           </div>
         </form>

@@ -5,27 +5,26 @@ import { ShieldCheck, Mail, Lock, Eye, EyeOff, X, AlertCircle, KeyRound } from '
 export default function RhLoginModal() {
   const { isRhLoginModalOpen, closeRhLoginModal, loginAsRh } = useApp();
 
-  const [email, setEmail] = useState('techcorpbr@gmail.com');
-  const [password, setPassword] = useState('123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   if (!isRhLoginModalOpen) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
-
-    const result = await loginAsRh(email, password);
-    if (!result.success) {
-      setErrorMessage(result.error);
+    setIsLoading(true);
+    try {
+      const result = await loginAsRh(email, password);
+      if (!result.success) {
+        setErrorMessage(result.error);
+      }
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  const handleFillDemo = () => {
-    setEmail('techcorpbr@gmail.com');
-    setPassword('123456');
-    setErrorMessage('');
   };
 
   return (
@@ -79,7 +78,7 @@ export default function RhLoginModal() {
                 Acesso Restrito
               </div>
               <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
-                Gestor RH & SST
+                Módulo Gestor RH
               </h3>
             </div>
           </div>
@@ -96,7 +95,7 @@ export default function RhLoginModal() {
 
         {/* Informative Note */}
         <p style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.45, marginBottom: '18px' }}>
-          Esta área é restrita aos usuários delegados pela empresa para gestão do programa de saúde ocupacional, conformidade com a <strong>NR-1</strong> e relatórios de SST.
+          Acesso exclusivo para <strong>Administração da Plataforma</strong> (<code>admin_plataforma</code>) e <strong>Gestores de RH</strong> (<code>rh_admin</code> / <code>rh_operador</code>).
         </p>
 
         {/* Error Alert */}
@@ -114,7 +113,7 @@ export default function RhLoginModal() {
             gap: '8px',
             marginBottom: '14px'
           }}>
-            <AlertCircle size={16} flexShrink={0} />
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
             <span>{errorMessage}</span>
           </div>
         )}
@@ -122,13 +121,13 @@ export default function RhLoginModal() {
         <form onSubmit={handleSubmit}>
           {/* E-mail */}
           <div className="form-group">
-            <label className="form-label">E-mail corporativo delegado</label>
+            <label className="form-label">E-mail de acesso</label>
             <div className="input-with-icon">
               <Mail size={18} className="input-icon" />
               <input
                 type="email"
                 className="form-input"
-                placeholder="techcorpbr@gmail.com"
+                placeholder="seu.email@empresa.com.br"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -137,14 +136,14 @@ export default function RhLoginModal() {
           </div>
 
           {/* Senha */}
-          <div className="form-group" style={{ marginBottom: '14px' }}>
-            <label className="form-label">Senha de acesso</label>
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label className="form-label">Senha (ou Senha Provisória)</label>
             <div className="input-with-icon" style={{ position: 'relative' }}>
               <Lock size={18} className="input-icon" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 className="form-input"
-                placeholder="123456"
+                placeholder="Digite sua senha"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ paddingRight: '42px' }}
@@ -171,41 +170,6 @@ export default function RhLoginModal() {
             </div>
           </div>
 
-          {/* Quick Demo Credentials Pill */}
-          <div style={{
-            background: '#f8fafc',
-            borderRadius: '12px',
-            padding: '10px 12px',
-            marginBottom: '20px',
-            border: '1px dashed #cbd5e1',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px'
-          }}>
-            <div style={{ fontSize: '0.73rem', color: '#475569', lineHeight: 1.3 }}>
-              <strong>Credenciais mockadas:</strong><br />
-              <code>techcorpbr@gmail.com</code> | senha: <code>123456</code>
-            </div>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              style={{
-                background: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '5px 10px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                color: '#15803d',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              Preencher
-            </button>
-          </div>
-
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
@@ -218,11 +182,12 @@ export default function RhLoginModal() {
             </button>
             <button
               type="submit"
+              disabled={isLoading}
               className="btn-primary"
               style={{ flex: 1.8, justifyContent: 'center', padding: '12px' }}
             >
               <KeyRound size={16} />
-              <span>Entrar no Painel</span>
+              <span>{isLoading ? 'Autenticando...' : 'Entrar no Módulo RH'}</span>
             </button>
           </div>
         </form>

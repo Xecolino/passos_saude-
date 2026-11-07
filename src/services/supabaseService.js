@@ -221,6 +221,623 @@ export async function fetchCompanyFromSupabase(empresaId = DEFAULT_EMPRESA_ID) {
 }
 
 /**
+ * Lista todas as empresas cadastradas em `public.empresas` enriquecidas com o
+ * usuário responsável (`papel = 'rh_admin'`) de `public.usuarios` / `public.convites`
+ * e o setor correspondente de `public.setores`.
+ */
+export async function fetchAllCompaniesFromSupabase() {
+  if (!isSupabaseConfigured()) return { success: false, localOnly: true, data: [] };
+
+  try {
+    const [empresasRes, usuariosRes, convitesRes, setoresRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/empresas?select=*&order=criado_em.desc`, {
+        method: 'GET',
+        headers: getHeaders()
+      }),
+      fetch(`${SUPABASE_URL}/rest/v1/usuarios?papel=eq.rh_admin&select=*,setores(id,nome)&order=criado_em.asc`, {
+        method: 'GET',
+        headers: getHeaders()
+      }),
+      fetch(`${SUPABASE_URL}/rest/v1/convites?papel=eq.rh_admin&select=*,setores(id,nome)&order=criado_em.asc`, {
+        method: 'GET',
+        headers: getHeaders()
+      }),
+      fetch(`${SUPABASE_URL}/rest/v1/setores?select=*&order=nome.asc`, {
+        method: 'GET',
+        headers: getHeaders()
+      })
+    ]);
+
+    if (!empresasRes.ok) {
+      const errText = await empresasRes.text();
+      return { success: false, ...parseSupabaseError(errText, 'empresas'), data: [] };
+    }
+
+    const empresas = (await empresasRes.json()) || [];
+    const usuariosRh = usuariosRes.ok ? (await usuariosRes.json()) || [] : [];
+    const convitesRh = convitesRes.ok ? (await convitesRes.json()) || [] : [];
+    const setores = setoresRes.ok ? (await setoresRes.json()) || [] : [];
+
+    const setorById = {};
+    for (const s of setores) {
+      setorById[s.id] = s.nome;
+    }
+
+    const enriched = empresas.map((emp) => {
+      const userAdmin = usuariosRh.find((u) => u.empresa_id === emp.id);
+      const inviteAdmin = convitesRh.find((c) => c.empresa_id === emp.id && c.situacao !== 'cancelado');
+
+      const responsavelUsuario = userAdmin
+        ? {
+            id: userAdmin.id,
+            usuarioId: userAdmin.id,
+            conviteId: inviteAdmin?.id || null,
+            nome: userAdmin.nome || emp.responsavel_nome || '',
+            email: userAdmin.email || emp.email_contato || '',
+            cpf: userAdmin.cpf || inviteAdmin?.cpf || '',
+            setor: userAdmin.setores?.nome || setorById[userAdmin.setor_id] || 'Recursos Humanos',
+            setorId: userAdmin.setor_id || null,
+            papel: 'rh_admin',
+            situacao: userAdmin.situacao || 'convidado',
+            aceitouTermoEm: userAdmin.aceitou_termo_em || null
+          }
+        : inviteAdmin
+        ? {
+            id: inviteAdmin.id,
+            usuarioId: inviteAdmin.usuario_id || null,
+            conviteId: inviteAdmin.id,
+            nome: inviteAdmin.nome || emp.responsavel_nome || '',
+            email: inviteAdmin.email || emp.email_contato || '',
+            cpf: inviteAdmin.cpf || '',
+            setor: inviteAdmin.setores?.nome || setorById[inviteAdmin.setor_id] || 'Recursos Humanos',
+            setorId: inviteAdmin.setor_id || null,
+            papel: 'rh_admin',
+            situacao: inviteAdmin.situacao === 'aceito' ? 'ativo' : 'convidado',
+            aceitouTermoEm: inviteAdmin.aceito_em || null
+          }
+        : {
+            id: null,
+            usuarioId: null,
+            conviteId: null,
+            nome: emp.responsavel_nome || '',
+            email: emp.email_contato || '',
+            cpf: '',
+            setor: 'Recursos Humanos',
+            setorId: null,
+            papel: 'rh_admin',
+            situacao: 'convidado',
+            aceitouTermoEm: null
+          };
+
+      return {
+        ...emp,
+        responsavelUsuario
+      };
+    });
+
+    return { success: true, data: enriched };
+  } catch (error) {
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+/**
+ * Cadastra uma nova empresa (`public.empresas`) pelo `admin_plataforma`, junto com:
+ *   1. O setor do responsável (`public.setores`) e setores base da empresa
+ *   2. Regras de pontuação iniciais (`public.regras_pontuacao`) e ciclo NR-1 (`public.ciclos_psicossociais`)
+ *   3. O convite de onboarding (`public.convites`) do usuário responsável com `papel = 'rh_admin'`
+ *   4. A conta em `auth.users` e registro em `public.usuarios` com `papel = 'rh_admin'` e `situacao = 'convidado'`
+ */
+export async function createCompanyAndResponsibleInSupabase({ companyData, responsibleData, adminUserId = null }) {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: 'Supabase não configurado no .env' };
+  }
+
+  try {
+    // 1. Insere em public.empresas (sem enviar id, ativo, criado_em e atualizado_em, que são gerados automaticamente)
+    const empresaPayload = {
+      razao_social: (companyData.razao_social || '').trim(),
+      nome_fantasia: companyData.nome_fantasia ? companyData.nome_fantasia.trim() : null,
+      cnpj: (companyData.cnpj || '').trim(),
+      email_contato: (companyData.email_contato || responsibleData.email || '').trim().toLowerCase(),
+      telefone: companyData.telefone ? companyData.telefone.trim() : null,
+      responsavel_nome: (companyData.responsavel_nome || responsibleData.nome || '').trim() || null,
+      segmento: companyData.segmento ? companyData.segmento.trim() : null,
+      logo_url: companyData.logo_url ? companyData.logo_url.trim() : null,
+      total_colaboradores: companyData.total_colaboradores !== '' && companyData.total_colaboradores !== null && companyData.total_colaboradores !== undefined
+        ? Number(companyData.total_colaboradores)
+        : null,
+      moedas_apoio_mensais: companyData.moedas_apoio_mensais !== '' && companyData.moedas_apoio_mensais !== null && companyData.moedas_apoio_mensais !== undefined
+        ? Number(companyData.moedas_apoio_mensais)
+        : 0
+    };
+
+    const empRes = await fetch(`${SUPABASE_URL}/rest/v1/empresas`, {
+      method: 'POST',
+      headers: getHeaders({ 'Prefer': 'return=representation' }),
+      body: JSON.stringify(empresaPayload)
+    });
+
+    if (!empRes.ok) {
+      const errText = await empRes.text();
+      const parsed = parseSupabaseError(errText, 'empresas');
+      return { success: false, error: parsed.message, isRlsError: parsed.isRlsError };
+    }
+
+    const empInserted = await empRes.json();
+    const createdCompany = empInserted?.[0];
+    if (!createdCompany?.id) {
+      return { success: false, error: 'Não foi possível obter o ID da empresa criada.' };
+    }
+
+    const newEmpresaId = createdCompany.id;
+
+    // 2. Cria o setor do responsável em public.setores (e setores corporativos padrão)
+    const responsibleSectorName = (responsibleData?.setor || 'Recursos Humanos').trim();
+    const setorId = await ensureSectorInSupabase(responsibleSectorName, newEmpresaId);
+
+    const defaultSectors = [
+      'Tecnologia',
+      'Operações & Logística',
+      'Comercial & Vendas',
+      'Recursos Humanos',
+      'Financeiro & Jurídico',
+      'Administrativo / Geral'
+    ];
+    for (const sName of defaultSectors) {
+      if (sName.toLowerCase() !== responsibleSectorName.toLowerCase()) {
+        await ensureSectorInSupabase(sName, newEmpresaId);
+      }
+    }
+
+    // 3. Inicializa regras_pontuacao e ciclo_psicossocial para a nova empresa
+    await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/regras_pontuacao`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          empresa_id: newEmpresaId,
+          passos_por_moeda: 100,
+          bonus_meta_diaria: 20,
+          limite_moedas_dia: 150,
+          dias_validos: [1, 2, 3, 4, 5, 6, 7]
+        })
+      }).catch(() => {}),
+      fetch(`${SUPABASE_URL}/rest/v1/ciclos_psicossociais`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          empresa_id: newEmpresaId,
+          instrumento_id: DEFAULT_INSTRUMENTO_ID,
+          titulo: `Ciclo NR-1 — ${createdCompany.nome_fantasia || createdCompany.razao_social}`,
+          inicio: new Date().toISOString().split('T')[0],
+          fim: '2026-12-31',
+          status: 'coletando',
+          minimo_agregacao: 5
+        })
+      }).catch(() => {})
+    ]);
+
+    // 4. Registra o usuário responsável (papel = 'rh_admin', situacao = 'convidado') em public.convites e auth.users/public.usuarios
+    let createdResponsible = null;
+    if (responsibleData?.email && responsibleData?.nome) {
+      const cleanEmail = responsibleData.email.trim().toLowerCase();
+      const convitePayload = {
+        empresa_id: newEmpresaId,
+        setor_id: setorId,
+        nome: responsibleData.nome.trim(),
+        email: cleanEmail,
+        cpf: responsibleData.cpf ? responsibleData.cpf.trim() : null,
+        cargo: 'Gestor RH Admin',
+        papel: 'rh_admin',
+        situacao: 'enviado',
+        ...(isValidUuid(adminUserId) && { convidado_por: adminUserId }),
+        enviado_em: new Date().toISOString()
+      };
+
+      const convRes = await fetch(`${SUPABASE_URL}/rest/v1/convites`, {
+        method: 'POST',
+        headers: getHeaders({ 'Prefer': 'return=representation' }),
+        body: JSON.stringify(convitePayload)
+      });
+
+      const convRows = convRes.ok ? await convRes.json() : [];
+      const conviteRow = convRows?.[0] || null;
+
+      let provisionedUserId = null;
+      if (responsibleData.password) {
+        const signUpRes = await signUpCollaboratorAuth({
+          email: cleanEmail,
+          password: responsibleData.password,
+          name: responsibleData.nome.trim(),
+          phone: companyData.telefone || ''
+        });
+        if (signUpRes.success && signUpRes.userId) {
+          provisionedUserId = signUpRes.userId;
+          // Garante em public.usuarios: papel = 'rh_admin' e situacao = 'convidado' até o aceite do termo!
+          await fetch(`${SUPABASE_URL}/rest/v1/usuarios?id=eq.${provisionedUserId}`, {
+            method: 'PATCH',
+            headers: getHeaders(),
+            body: JSON.stringify({
+              empresa_id: newEmpresaId,
+              setor_id: setorId,
+              nome: responsibleData.nome.trim(),
+              email: cleanEmail,
+              cpf: responsibleData.cpf ? responsibleData.cpf.trim() : null,
+              telefone: companyData.telefone ? companyData.telefone.trim() : null,
+              cargo: 'Gestor RH Admin',
+              papel: 'rh_admin',
+              situacao: 'convidado',
+              aceitou_termo_em: null,
+              atualizado_em: new Date().toISOString()
+            })
+          });
+
+          if (conviteRow?.id) {
+            await fetch(`${SUPABASE_URL}/rest/v1/convites?id=eq.${conviteRow.id}`, {
+              method: 'PATCH',
+              headers: getHeaders(),
+              body: JSON.stringify({
+                usuario_id: provisionedUserId,
+                situacao: 'enviado'
+              })
+            });
+          }
+        }
+      }
+
+      createdResponsible = {
+        id: provisionedUserId || conviteRow?.id || null,
+        usuarioId: provisionedUserId,
+        conviteId: conviteRow?.id || null,
+        nome: responsibleData.nome.trim(),
+        email: cleanEmail,
+        cpf: responsibleData.cpf ? responsibleData.cpf.trim() : '',
+        setor: responsibleSectorName,
+        setorId,
+        papel: 'rh_admin',
+        situacao: 'convidado',
+        aceitouTermoEm: null
+      };
+    }
+
+    // 5. Log de Auditoria
+    await saveAuditLogToSupabase({
+      empresaId: newEmpresaId,
+      usuarioId: adminUserId,
+      acao: 'CADASTRO_EMPRESA_E_RH_ADMIN',
+      entidade: 'empresas',
+      entidadeId: newEmpresaId,
+      dados: {
+        razao_social: createdCompany.razao_social,
+        cnpj: createdCompany.cnpj,
+        responsavel_email: responsibleData?.email || null
+      }
+    });
+
+    return {
+      success: true,
+      data: {
+        ...createdCompany,
+        responsavelUsuario: createdResponsible
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Atualiza os dados de uma empresa em `public.empresas` e do seu usuário responsável `rh_admin`
+ * em `public.setores`, `public.usuarios` e `public.convites`.
+ */
+export async function updateCompanyAndResponsibleInSupabase(empresaId, { companyData, responsibleData, adminUserId = null }) {
+  if (!isSupabaseConfigured() || !isValidUuid(empresaId)) {
+    return { success: false, error: 'ID da empresa inválido ou Supabase não configurado.' };
+  }
+
+  try {
+    const empresaPayload = {
+      razao_social: (companyData.razao_social || '').trim(),
+      nome_fantasia: companyData.nome_fantasia ? companyData.nome_fantasia.trim() : null,
+      cnpj: (companyData.cnpj || '').trim(),
+      email_contato: (companyData.email_contato || responsibleData?.email || '').trim().toLowerCase(),
+      telefone: companyData.telefone ? companyData.telefone.trim() : null,
+      responsavel_nome: (companyData.responsavel_nome || responsibleData?.nome || '').trim() || null,
+      segmento: companyData.segmento ? companyData.segmento.trim() : null,
+      logo_url: companyData.logo_url ? companyData.logo_url.trim() : null,
+      total_colaboradores: companyData.total_colaboradores !== '' && companyData.total_colaboradores !== null && companyData.total_colaboradores !== undefined
+        ? Number(companyData.total_colaboradores)
+        : null,
+      moedas_apoio_mensais: companyData.moedas_apoio_mensais !== '' && companyData.moedas_apoio_mensais !== null && companyData.moedas_apoio_mensais !== undefined
+        ? Number(companyData.moedas_apoio_mensais)
+        : 0,
+      atualizado_em: new Date().toISOString()
+    };
+
+    const empRes = await fetch(`${SUPABASE_URL}/rest/v1/empresas?id=eq.${empresaId}`, {
+      method: 'PATCH',
+      headers: getHeaders({ 'Prefer': 'return=representation' }),
+      body: JSON.stringify(empresaPayload)
+    });
+
+    if (!empRes.ok) {
+      const errText = await empRes.text();
+      return { success: false, ...parseSupabaseError(errText, 'empresas') };
+    }
+
+    const updatedRows = await empRes.json();
+    const updatedCompany = updatedRows?.[0] || { id: empresaId, ...empresaPayload };
+
+    let updatedResponsible = null;
+    if (responsibleData?.nome && responsibleData?.email) {
+      const cleanEmail = responsibleData.email.trim().toLowerCase();
+      const responsibleSectorName = (responsibleData.setor || 'Recursos Humanos').trim();
+      const setorId = await ensureSectorInSupabase(responsibleSectorName, empresaId);
+
+      // Atualiza ou insere em public.convites
+      const checkConv = await fetch(
+        `${SUPABASE_URL}/rest/v1/convites?empresa_id=eq.${empresaId}&papel=eq.rh_admin&select=id,situacao,usuario_id&limit=1`,
+        { method: 'GET', headers: getHeaders() }
+      );
+      const existingConvs = checkConv.ok ? await checkConv.json() : [];
+
+      let conviteId = existingConvs?.[0]?.id || null;
+      if (conviteId) {
+        await fetch(`${SUPABASE_URL}/rest/v1/convites?id=eq.${conviteId}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            setor_id: setorId,
+            nome: responsibleData.nome.trim(),
+            email: cleanEmail,
+            cpf: responsibleData.cpf ? responsibleData.cpf.trim() : null,
+            papel: 'rh_admin'
+          })
+        });
+      } else {
+        const postConv = await fetch(`${SUPABASE_URL}/rest/v1/convites`, {
+          method: 'POST',
+          headers: getHeaders({ 'Prefer': 'return=representation' }),
+          body: JSON.stringify({
+            empresa_id: empresaId,
+            setor_id: setorId,
+            nome: responsibleData.nome.trim(),
+            email: cleanEmail,
+            cpf: responsibleData.cpf ? responsibleData.cpf.trim() : null,
+            cargo: 'Gestor RH Admin',
+            papel: 'rh_admin',
+            situacao: 'enviado',
+            enviado_em: new Date().toISOString()
+          })
+        });
+        const postRows = postConv.ok ? await postConv.json() : [];
+        conviteId = postRows?.[0]?.id || null;
+      }
+
+      // Verifica se já existe usuário rh_admin na empresa
+      const checkUser = await fetch(
+        `${SUPABASE_URL}/rest/v1/usuarios?empresa_id=eq.${empresaId}&papel=eq.rh_admin&select=id,situacao,aceitou_termo_em&limit=1`,
+        { method: 'GET', headers: getHeaders() }
+      );
+      const existingUsers = checkUser.ok ? await checkUser.json() : [];
+      let usuarioId = existingUsers?.[0]?.id || null;
+      let currentSituacao = existingUsers?.[0]?.situacao || 'convidado';
+
+      if (usuarioId) {
+        await fetch(`${SUPABASE_URL}/rest/v1/usuarios?id=eq.${usuarioId}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            setor_id: setorId,
+            nome: responsibleData.nome.trim(),
+            email: cleanEmail,
+            cpf: responsibleData.cpf ? responsibleData.cpf.trim() : null,
+            telefone: companyData.telefone ? companyData.telefone.trim() : null,
+            papel: 'rh_admin',
+            atualizado_em: new Date().toISOString()
+          })
+        });
+      } else if (responsibleData.password) {
+        const signUpRes = await signUpCollaboratorAuth({
+          email: cleanEmail,
+          password: responsibleData.password,
+          name: responsibleData.nome.trim(),
+          phone: companyData.telefone || ''
+        });
+        if (signUpRes.success && signUpRes.userId) {
+          usuarioId = signUpRes.userId;
+          currentSituacao = 'convidado';
+          await fetch(`${SUPABASE_URL}/rest/v1/usuarios?id=eq.${usuarioId}`, {
+            method: 'PATCH',
+            headers: getHeaders(),
+            body: JSON.stringify({
+              empresa_id: empresaId,
+              setor_id: setorId,
+              nome: responsibleData.nome.trim(),
+              email: cleanEmail,
+              cpf: responsibleData.cpf ? responsibleData.cpf.trim() : null,
+              papel: 'rh_admin',
+              situacao: 'convidado',
+              atualizado_em: new Date().toISOString()
+            })
+          });
+        }
+      }
+
+      updatedResponsible = {
+        id: usuarioId || conviteId,
+        usuarioId,
+        conviteId,
+        nome: responsibleData.nome.trim(),
+        email: cleanEmail,
+        cpf: responsibleData.cpf ? responsibleData.cpf.trim() : '',
+        setor: responsibleSectorName,
+        setorId,
+        papel: 'rh_admin',
+        situacao: currentSituacao
+      };
+    }
+
+    await saveAuditLogToSupabase({
+      empresaId,
+      usuarioId: adminUserId,
+      acao: 'EDICAO_EMPRESA_E_RH_ADMIN',
+      entidade: 'empresas',
+      entidadeId: empresaId,
+      dados: { razao_social: empresaPayload.razao_social, cnpj: empresaPayload.cnpj }
+    });
+
+    return {
+      success: true,
+      data: {
+        ...updatedCompany,
+        responsavelUsuario: updatedResponsible
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Busca o Termo de Responsabilidade ativo em `public.termos`
+ */
+export async function fetchActiveTermFromSupabase() {
+  const defaultTerm = {
+    id: '33333333-3333-3333-3333-333333333301',
+    versao: '2026.1',
+    titulo: 'Termo de Responsabilidade, Uso e Privacidade — Passo é Saúde (LGPD & NR-1)',
+    conteudo: `TERMO DE RESPONSABILIDADE E CONSENTIMENTO (LGPD ART. 11 & NR-1)
+
+1. OBJETIVO E FINALIDADE:
+O presente Termo de Responsabilidade regula o acesso e a utilização da plataforma corporativa Passo é Saúde, voltada à promoção da saúde física, bem-estar emocional, gamificação corporativa e conformidade com a Norma Regulamentadora NR-1 (Gerenciamento de Riscos Ocupacionais e Psicossociais).
+
+2. PROTEÇÃO DE DADOS PESSOAIS E SENSÍVEIS (LGPD - LEI Nº 13.709/2018):
+Seus dados individuais de saúde, autoavaliações psicossociais e agendamentos clínicos são estritamente confidenciais e protegidos pelo Art. 11 da LGPD. Os painéis gerenciais do RH exibem exclusivamente indicadores estatísticos agregados e anonimizados (com trava mínima de k-anonimato).
+
+3. COMPROMISSO E RESPONSABILIDADE DO USUÁRIO:
+• Utilizar suas credenciais de acesso de forma pessoal e intransferível, recomendando-se a substituição da senha provisória;
+• Em perfis de gestão (rh_admin, rh_operador, gestor) ou apoio clínico (psicologo), zelar pelo sigilo ético, pela governança dos dados cadastrais dos colaboradores e pelo cumprimento das normas de Saúde e Segurança do Trabalho (SST).
+
+Ao clicar em "Aceite", você confirma a leitura deste Termo de Responsabilidade e ativa oficialmente o seu cadastro na plataforma.`
+  };
+
+  if (!isSupabaseConfigured()) {
+    return { success: true, data: defaultTerm };
+  }
+
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/termos?ativo=eq.true&select=*&order=publicado_em.desc.nullslast,criado_em.desc&limit=1`,
+      { method: 'GET', headers: getHeaders() }
+    );
+
+    if (response.ok) {
+      const rows = await response.json();
+      if (rows && rows.length > 0) {
+        return { success: true, data: rows[0] };
+      }
+    }
+    return { success: true, data: defaultTerm };
+  } catch {
+    return { success: true, data: defaultTerm };
+  }
+}
+
+/**
+ * Registra o Aceite do Termo de Responsabilidade:
+ *   1. Grava em `public.aceites_termo`
+ *   2. Muda `public.usuarios.situacao` de `'convidado'` para `'ativo'` e define `aceitou_termo_em`
+ *   3. Muda `public.convites.situacao` para `'aceito'`
+ */
+export async function acceptTermInSupabase({ usuarioId, empresaId = DEFAULT_EMPRESA_ID, email = '', termoId = null }) {
+  if (!isSupabaseConfigured() || !isValidUuid(usuarioId)) {
+    return { success: false, localOnly: true };
+  }
+
+  const nowIso = new Date().toISOString();
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'PassoSaudeWeb';
+
+  try {
+    // 1. Tenta via Stored Procedure RPC fn_aceitar_termo
+    const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/fn_aceitar_termo`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        p_termo_id: isValidUuid(termoId) ? termoId : null,
+        p_user_agent: userAgent
+      })
+    });
+
+    if (rpcRes.ok) {
+      const rpcData = await rpcRes.json();
+      return { success: true, data: rpcData };
+    }
+
+    // 2. Fallback REST direto nas tabelas termos, aceites_termo, usuarios e convites
+    let resolvedTermoId = isValidUuid(termoId) ? termoId : null;
+    if (!resolvedTermoId) {
+      const termFetch = await fetchActiveTermFromSupabase();
+      resolvedTermoId = termFetch.data?.id || '33333333-3333-3333-3333-333333333301';
+    }
+
+    // 2a. Grava em public.aceites_termo
+    await fetch(`${SUPABASE_URL}/rest/v1/aceites_termo?on_conflict=usuario_id,termo_id`, {
+      method: 'POST',
+      headers: getHeaders({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({
+        usuario_id: usuarioId,
+        termo_id: resolvedTermoId,
+        aceito_em: nowIso,
+        user_agent: userAgent
+      })
+    });
+
+    // 2b. Atualiza public.usuarios: situacao -> 'ativo' e aceitou_termo_em -> now()
+    const userPatch = await fetch(`${SUPABASE_URL}/rest/v1/usuarios?id=eq.${usuarioId}`, {
+      method: 'PATCH',
+      headers: getHeaders({ 'Prefer': 'return=representation' }),
+      body: JSON.stringify({
+        situacao: 'ativo',
+        aceitou_termo_em: nowIso,
+        ultimo_acesso_em: nowIso,
+        atualizado_em: nowIso
+      })
+    });
+
+    // 2c. Atualiza public.convites: situacao -> 'aceito'
+    if (email) {
+      await fetch(`${SUPABASE_URL}/rest/v1/convites?email=ilike.${encodeURIComponent(email.trim().toLowerCase())}`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          situacao: 'aceito',
+          aceito_em: nowIso,
+          usuario_id: usuarioId
+        })
+      });
+    }
+
+    await saveAuditLogToSupabase({
+      empresaId,
+      usuarioId,
+      acao: 'ACEITE_TERMO_RESPONSABILIDADE',
+      entidade: 'aceites_termo',
+      entidadeId: resolvedTermoId,
+      dados: { situacao_anterior: 'convidado', situacao_nova: 'ativo' }
+    });
+
+    return {
+      success: userPatch.ok,
+      data: { usuario_id: usuarioId, termo_id: resolvedTermoId, situacao: 'ativo' }
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Lista setores da empresa em `public.setores`
  */
 export async function fetchSectorsFromSupabase(empresaId = DEFAULT_EMPRESA_ID) {
@@ -329,9 +946,10 @@ export async function fetchUserProfileById(usuarioId) {
         matricula: u.matricula || '',
         role: u.cargo || 'Colaborador Corporativo',
         papel: u.papel || 'colaborador',
-        situacao: u.situacao || 'ativo',
+        situacao: u.situacao || 'convidado',
+        aceitouTermoEm: u.aceitou_termo_em || null,
         department: u.setores?.nome || 'Tecnologia',
-        companyName: u.empresas?.nome_fantasia || u.empresas?.razao_social || 'TechCorp Brasil',
+        companyName: u.empresas?.nome_fantasia || u.empresas?.razao_social || 'Passo é Saúde',
         stepsGoal: u.meta_diaria_passos || 10000,
         coins: wallet?.saldo !== undefined ? Number(wallet.saldo) : 0,
         avatarUrl: u.avatar_url || null
@@ -388,7 +1006,7 @@ export async function fetchEmployeesFromSupabase(empresaId = DEFAULT_EMPRESA_ID)
 
     const unifiedByEmail = new Map();
 
-    // 1. Mapeia usuários ativos em public.usuarios
+    // 1. Mapeia usuários em public.usuarios
     for (const u of usuariosRows || []) {
       const emailKey = (u.email || '').toLowerCase();
       const wallet = Array.isArray(u.carteiras) ? u.carteiras[0] : u.carteiras;
@@ -404,7 +1022,8 @@ export async function fetchEmployeesFromSupabase(empresaId = DEFAULT_EMPRESA_ID)
         matricula: u.matricula || '',
         cargo: u.cargo || 'Colaborador',
         papel: u.papel || 'colaborador',
-        situacao: u.situacao || 'ativo',
+        situacao: u.situacao || 'convidado',
+        aceitouTermoEm: u.aceitou_termo_em || null,
         department: u.setores?.nome || 'Tecnologia',
         setorId: u.setor_id,
         stepsGoal: u.meta_diaria_passos || 8000,
@@ -440,6 +1059,7 @@ export async function fetchEmployeesFromSupabase(empresaId = DEFAULT_EMPRESA_ID)
           cargo: c.cargo || 'Colaborador',
           papel: c.papel || 'colaborador',
           situacao: c.situacao === 'aceito' ? 'ativo' : 'convidado',
+          aceitouTermoEm: c.aceito_em || null,
           department: c.setores?.nome || 'Tecnologia',
           setorId: c.setor_id,
           stepsGoal: 8000,
@@ -466,7 +1086,7 @@ export async function fetchEmployeesFromSupabase(empresaId = DEFAULT_EMPRESA_ID)
  *   1. Resolve ou cria o setor em `public.setores`
  *   2. Cria o registro de onboarding em `public.convites` (vinculado à `empresa_id` e `setor_id`)
  *   3. Se uma senha provisória foi gerada, cria o usuário em `auth.users` via SignUp,
- *      disparando a trigger `tg_novo_usuario` que popula `public.usuarios` e `public.carteiras`!
+ *      populando `public.usuarios` com `situacao = 'convidado'` (muda para `'ativo'` após aceite do termo) e `public.carteiras`!
  */
 export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_EMPRESA_ID) {
   if (!isSupabaseConfigured()) {
@@ -481,6 +1101,10 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
     // 1. Garante o setor em public.setores
     const setorId = await ensureSectorInSupabase(employeeData.department, empresaId);
 
+    // Garante que apenas os papéis permitidos ao rh_admin sejam atribuídos (nunca admin_plataforma)
+    const allowedRoles = ['colaborador', 'gestor', 'rh_operador', 'rh_admin', 'psicologo'];
+    const safePapel = allowedRoles.includes(employeeData.papel) ? employeeData.papel : 'colaborador';
+
     // 2. Monta o payload para public.convites
     const convitePayload = {
       empresa_id: empresaId,
@@ -490,12 +1114,10 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
       cpf: employeeData.cpf ? employeeData.cpf.trim() : null,
       matricula: employeeData.matricula ? employeeData.matricula.trim() : null,
       cargo: employeeData.cargo || employeeData.role || 'Colaborador',
-      papel: employeeData.papel || 'colaborador',
+      papel: safePapel,
       situacao: 'enviado',
       enviado_em: new Date().toISOString()
     };
-
-    console.log('[Supabase Service] Gravando convite de onboarding em public.convites:', convitePayload);
 
     // Verifica se já existe convite aberto para este e-mail na empresa
     const checkRes = await fetch(
@@ -507,7 +1129,6 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
     const existingConvites = checkRes.ok ? await checkRes.json() : [];
 
     if (existingConvites && existingConvites.length > 0) {
-      // Atualiza convite existente
       const conviteId = existingConvites[0].id;
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/convites?id=eq.${conviteId}`, {
         method: 'PATCH',
@@ -529,7 +1150,6 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
       const patched = await patchRes.json();
       conviteResult = patched?.[0] || existingConvites[0];
     } else {
-      // Insere novo convite em public.convites
       const postRes = await fetch(`${SUPABASE_URL}/rest/v1/convites`, {
         method: 'POST',
         headers: getHeaders({ 'Prefer': 'return=representation' }),
@@ -539,7 +1159,6 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
       if (!postRes.ok) {
         const errText = await postRes.text();
         const parsed = parseSupabaseError(errText, 'convites');
-        console.error('[Supabase Service] Erro ao inserir em public.convites:', postRes.status, parsed.message);
         return {
           success: false,
           error: parsed.message,
@@ -552,7 +1171,7 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
       conviteResult = inserted?.[0] || null;
     }
 
-    // 3. Se houver senha provisória, provisiona a conta em auth.users para acionar tg_novo_usuario
+    // 3. Se houver senha provisória, provisiona a conta em auth.users com situacao = 'convidado'
     let provisionedUserId = null;
     if (employeeData.password) {
       const signUpRes = await signUpCollaboratorAuth({
@@ -564,16 +1183,38 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
 
       if (signUpRes.success && signUpRes.userId) {
         provisionedUserId = signUpRes.userId;
-        // Atualiza telefone na tabela public.usuarios recém-provisionada pela trigger
-        if (employeeData.phone) {
-          await fetch(`${SUPABASE_URL}/rest/v1/usuarios?id=eq.${provisionedUserId}`, {
-            method: 'PATCH',
+        await fetch(`${SUPABASE_URL}/rest/v1/usuarios?id=eq.${provisionedUserId}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            empresa_id: empresaId,
+            setor_id: setorId,
+            nome: convitePayload.nome,
+            email: convitePayload.email,
+            cpf: convitePayload.cpf,
+            matricula: convitePayload.matricula,
+            cargo: convitePayload.cargo,
+            papel: safePapel,
+            situacao: 'convidado',
+            aceitou_termo_em: null,
+            telefone: employeeData.phone ? employeeData.phone.trim() : null,
+            atualizado_em: new Date().toISOString()
+          })
+        });
+
+        // Se o papel atribuído for psicologo, garante o registro em public.psicologos
+        if (safePapel === 'psicologo') {
+          await fetch(`${SUPABASE_URL}/rest/v1/psicologos`, {
+            method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({
-              telefone: employeeData.phone.trim(),
-              atualizado_em: new Date().toISOString()
+              usuario_id: provisionedUserId,
+              nome: convitePayload.nome,
+              crp: convitePayload.matricula || 'CRP Ativo',
+              especialidades: [convitePayload.cargo || 'Psicologia Ocupacional & NR-1'],
+              ativo: true
             })
-          });
+          }).catch(() => {});
         }
       }
     }
@@ -583,11 +1224,11 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
       data: {
         ...conviteResult,
         usuario_id: provisionedUserId || conviteResult?.usuario_id || null,
-        setor_id: setorId
+        setor_id: setorId,
+        situacao: 'convidado'
       }
     };
   } catch (error) {
-    console.error('[Supabase Service] Falha de conexão ao cadastrar colaborador:', error);
     return {
       success: false,
       error: error.message || 'Falha de conexão com o Supabase.'
@@ -597,6 +1238,8 @@ export async function saveEmployeeToSupabase(employeeData, empresaId = DEFAULT_E
 
 /**
  * Atualiza dados de um colaborador em `public.usuarios` e/ou `public.convites`
+ * Permite ao `rh_admin` alterar o `papel` (colaborador, gestor, rh_operador, rh_admin, psicologo)
+ * e a `situacao` (ativo, inativo, afastado, desligado).
  */
 export async function updateEmployeeInSupabase(id, updatedFields, empresaId = DEFAULT_EMPRESA_ID) {
   if (!isSupabaseConfigured()) {
@@ -609,6 +1252,16 @@ export async function updateEmployeeInSupabase(id, updatedFields, empresaId = DE
       setorId = await ensureSectorInSupabase(updatedFields.department, empresaId);
     }
 
+    const allowedRoles = ['colaborador', 'gestor', 'rh_operador', 'rh_admin', 'psicologo'];
+    const safePapel = updatedFields.papel && allowedRoles.includes(updatedFields.papel)
+      ? updatedFields.papel
+      : undefined;
+
+    const allowedSituacoes = ['convidado', 'ativo', 'inativo', 'afastado', 'desligado'];
+    const safeSituacao = updatedFields.situacao && allowedSituacoes.includes(updatedFields.situacao)
+      ? updatedFields.situacao
+      : undefined;
+
     const userPayload = {
       ...(updatedFields.name && { nome: updatedFields.name.trim() }),
       ...(updatedFields.email && { email: updatedFields.email.trim().toLowerCase() }),
@@ -616,8 +1269,8 @@ export async function updateEmployeeInSupabase(id, updatedFields, empresaId = DE
       ...(updatedFields.cpf !== undefined && { cpf: updatedFields.cpf || null }),
       ...(updatedFields.matricula !== undefined && { matricula: updatedFields.matricula || null }),
       ...(updatedFields.cargo !== undefined && { cargo: updatedFields.cargo || null }),
-      ...(updatedFields.papel !== undefined && { papel: updatedFields.papel }),
-      ...(updatedFields.situacao !== undefined && { situacao: updatedFields.situacao }),
+      ...(safePapel !== undefined && { papel: safePapel }),
+      ...(safeSituacao !== undefined && { situacao: safeSituacao }),
       ...(updatedFields.stepsGoal !== undefined && { meta_diaria_passos: Number(updatedFields.stepsGoal) }),
       ...(setorId && { setor_id: setorId }),
       atualizado_em: new Date().toISOString()
@@ -629,11 +1282,10 @@ export async function updateEmployeeInSupabase(id, updatedFields, empresaId = DE
       ...(updatedFields.cpf !== undefined && { cpf: updatedFields.cpf || null }),
       ...(updatedFields.matricula !== undefined && { matricula: updatedFields.matricula || null }),
       ...(updatedFields.cargo !== undefined && { cargo: updatedFields.cargo || null }),
-      ...(updatedFields.papel !== undefined && { papel: updatedFields.papel }),
+      ...(safePapel !== undefined && { papel: safePapel }),
       ...(setorId && { setor_id: setorId })
     };
 
-    // Atualiza por UUID (se for válido) ou por e-mail
     if (isValidUuid(id)) {
       await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/usuarios?id=eq.${id}`, {
@@ -647,6 +1299,20 @@ export async function updateEmployeeInSupabase(id, updatedFields, empresaId = DE
           body: JSON.stringify(convitePayload)
         })
       ]);
+
+      if (safePapel === 'psicologo' && updatedFields.name) {
+        await fetch(`${SUPABASE_URL}/rest/v1/psicologos`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            usuario_id: id,
+            nome: updatedFields.name.trim(),
+            crp: updatedFields.matricula || 'CRP Ativo',
+            especialidades: [updatedFields.cargo || 'Psicologia Ocupacional & NR-1'],
+            ativo: true
+          })
+        }).catch(() => {});
+      }
     } else if (updatedFields.email) {
       const cleanEmail = encodeURIComponent(updatedFields.email.trim().toLowerCase());
       await Promise.all([

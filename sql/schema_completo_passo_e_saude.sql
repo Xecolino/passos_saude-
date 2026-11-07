@@ -655,16 +655,19 @@ create trigger tg_transacao_moeda
   after insert on public.transacoes_moedas
   for each row execute function public.fn_aplicar_transacao_moeda();
 
--- 7.3 Provisionamento Automático de Usuário e Liquidação de Convite
+-- 7.3 Provisionamento Automático de Usuário e Vinculação de Convite
+-- Retificado: o usuário convidado entra com situacao = 'convidado' e só muda para 'ativo'
+-- quando aceita o Termo de Responsabilidade (public.aceites_termo) no seu 1º acesso no App.
 create or replace function public.fn_novo_usuario()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
   v_convite public.convites%rowtype;
   v_nome text;
+  v_situacao_inicial public.situacao_usuario;
 begin
   v_nome := coalesce(new.raw_user_meta_data->>'nome', split_part(new.email, '@', 1));
 
-  -- 1. Verifica se existe convite válido e pendente para o e-mail cadastrado
+  -- 1. Verifica se existe convite válido e pendente/enviado para o e-mail cadastrado
   select * into v_convite
   from public.convites
   where lower(email) = lower(new.email)
@@ -674,7 +677,12 @@ begin
   limit 1;
 
   if found then
-    -- Usuário entra vinculado à empresa, setor e papel configurados pelo RH
+    -- Apenas admin_plataforma nasce ativo; demais papéis (inclusive rh_admin) nascem como 'convidado' até o aceite do termo
+    v_situacao_inicial := case
+      when v_convite.papel = 'admin_plataforma' then 'ativo'::public.situacao_usuario
+      else 'convidado'::public.situacao_usuario
+    end;
+
     insert into public.usuarios (
       id, empresa_id, setor_id, papel, situacao, nome, email, cpf, matricula, cargo, criado_em, atualizado_em
     ) values (
@@ -682,7 +690,7 @@ begin
       v_convite.empresa_id,
       v_convite.setor_id,
       v_convite.papel,
-      'ativo',
+      v_situacao_inicial,
       coalesce(v_convite.nome, v_nome),
       new.email,
       v_convite.cpf,
@@ -695,18 +703,18 @@ begin
       empresa_id    = excluded.empresa_id,
       setor_id      = excluded.setor_id,
       papel         = excluded.papel,
-      situacao      = 'ativo',
+      cpf           = coalesce(excluded.cpf, public.usuarios.cpf),
+      matricula     = coalesce(excluded.matricula, public.usuarios.matricula),
+      cargo         = coalesce(excluded.cargo, public.usuarios.cargo),
       atualizado_em = now();
 
-    -- Marca o convite como aceito
+    -- Vincula o usuario_id ao convite (mantendo situacao = 'enviado' até o aceite do termo)
     update public.convites
-       set situacao   = 'aceito',
-           aceito_em  = now(),
-           usuario_id = new.id
+       set usuario_id = new.id
      where id = v_convite.id;
 
   else
-    -- Cadastro autônomo sem convite prévio
+    -- Cadastro sem convite prévio entra como 'convidado'
     insert into public.usuarios (id, nome, email, situacao, criado_em, atualizado_em)
     values (new.id, v_nome, new.email, 'convidado', now(), now())
     on conflict (id) do nothing;
@@ -724,6 +732,90 @@ drop trigger if exists tg_novo_usuario on auth.users;
 create trigger tg_novo_usuario
   after insert on auth.users
   for each row execute function public.fn_novo_usuario();
+
+-- 7.3.1 Stored Procedure: Aceite do Termo de Responsabilidade (convidado -> ativo)
+create or replace function public.fn_aceitar_termo(
+  p_termo_id uuid default null,
+  p_user_agent text default null
+)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_usuario_id uuid := auth.uid();
+  v_termo_id uuid;
+  v_email text;
+  v_empresa_id uuid;
+begin
+  if v_usuario_id is null then
+    raise exception 'Usuário não autenticado.';
+  end if;
+
+  -- Localiza o termo ativo caso p_termo_id não seja informado
+  if p_termo_id is not null then
+    v_termo_id := p_termo_id;
+  else
+    select id into v_termo_id
+    from public.termos
+    where ativo = true
+    order by publicado_em desc nulls last, criado_em desc
+    limit 1;
+  end if;
+
+  if v_termo_id is null then
+    insert into public.termos (versao, titulo, conteudo, publicado_em, ativo)
+    values (
+      '2026.1',
+      'Termo de Responsabilidade, Uso e Privacidade — Passo é Saúde (LGPD & NR-1)',
+      'Declaro ciência e concordância com os Termos de Uso, Política de Privacidade (LGPD Art. 11) e diretrizes de gestão ocupacional NR-1 da plataforma Passo é Saúde.',
+      now(),
+      true
+    )
+    on conflict (versao) do update set ativo = true
+    returning id into v_termo_id;
+  end if;
+
+  -- 1. Registra o aceite em public.aceites_termo
+  insert into public.aceites_termo (usuario_id, termo_id, aceito_em, user_agent)
+  values (v_usuario_id, v_termo_id, now(), p_user_agent)
+  on conflict (usuario_id, termo_id) do update
+    set aceito_em  = now(),
+        user_agent = coalesce(excluded.user_agent, public.aceites_termo.user_agent);
+
+  -- 2. Atualiza a situação do usuário de 'convidado' para 'ativo'
+  update public.usuarios
+     set situacao         = 'ativo',
+         aceitou_termo_em = now(),
+         ultimo_acesso_em = now(),
+         atualizado_em    = now()
+   where id = v_usuario_id
+  returning email, empresa_id into v_email, v_empresa_id;
+
+  -- 3. Atualiza o convite correspondente para 'aceito'
+  update public.convites
+     set situacao   = 'aceito',
+         aceito_em  = now(),
+         usuario_id = v_usuario_id
+   where usuario_id = v_usuario_id
+      or (lower(email) = lower(v_email) and situacao in ('pendente', 'enviado'));
+
+  -- 4. Registra trilha de auditoria
+  insert into public.logs_auditoria (empresa_id, usuario_id, acao, entidade, entidade_id, dados, user_agent)
+  values (
+    v_empresa_id,
+    v_usuario_id,
+    'ACEITE_TERMO_RESPONSABILIDADE',
+    'aceites_termo',
+    v_termo_id,
+    jsonb_build_object('situacao_anterior', 'convidado', 'situacao_nova', 'ativo'),
+    p_user_agent
+  );
+
+  return jsonb_build_object(
+    'sucesso', true,
+    'usuario_id', v_usuario_id,
+    'termo_id', v_termo_id,
+    'situacao', 'ativo'
+  );
+end $$;
 
 -- 7.4 Stored Procedure Segura: Consolidação de Ciclo NR-1 (com K-Anonimato >= 5)
 create or replace function public.fn_consolidar_ciclo_nr1(p_ciclo_id uuid)
@@ -997,14 +1089,19 @@ drop policy if exists empresas_select on public.empresas;
 create policy empresas_select on public.empresas for select
   using (id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma());
 
+drop policy if exists empresas_insert on public.empresas;
+create policy empresas_insert on public.empresas for insert
+  with check (public.fn_eh_admin_plataforma());
+
 drop policy if exists empresas_update on public.empresas;
 create policy empresas_update on public.empresas for update
-  using ((id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
+  using ((id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check ((id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 drop policy if exists setores_all on public.setores;
 create policy setores_all on public.setores for all
   using (empresa_id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  with check ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 -- ------------------------------------------------------------------------------
 -- POLÍTICAS: USUÁRIOS & CONVITES
@@ -1015,7 +1112,7 @@ create policy usuarios_self on public.usuarios for select
 
 drop policy if exists usuarios_empresa on public.usuarios;
 create policy usuarios_empresa on public.usuarios for select
-  using (empresa_id = public.fn_empresa_atual());
+  using (empresa_id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma());
 
 drop policy if exists usuarios_update_self on public.usuarios;
 create policy usuarios_update_self on public.usuarios for update
@@ -1023,13 +1120,23 @@ create policy usuarios_update_self on public.usuarios for update
 
 drop policy if exists usuarios_rh_manage on public.usuarios;
 create policy usuarios_rh_manage on public.usuarios for all
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check (
+    (
+      public.fn_eh_admin_plataforma()
+      or (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh() and papel <> 'admin_plataforma')
+    )
+  );
 
 drop policy if exists convites_rh on public.convites;
 create policy convites_rh on public.convites for all
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check (
+    (
+      public.fn_eh_admin_plataforma()
+      or (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh() and papel <> 'admin_plataforma')
+    )
+  );
 
 -- ------------------------------------------------------------------------------
 -- POLÍTICAS: TERMOS & ACEITES
@@ -1037,9 +1144,15 @@ create policy convites_rh on public.convites for all
 drop policy if exists termos_public on public.termos;
 create policy termos_public on public.termos for select to authenticated using (ativo = true);
 
+drop policy if exists termos_admin_write on public.termos;
+create policy termos_admin_write on public.termos for all
+  using (public.fn_eh_admin_plataforma())
+  with check (public.fn_eh_admin_plataforma());
+
 drop policy if exists aceites_self on public.aceites_termo;
 create policy aceites_self on public.aceites_termo for all
-  using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
+  using (usuario_id = auth.uid() or public.fn_eh_admin_plataforma() or public.fn_eh_rh())
+  with check (usuario_id = auth.uid());
 
 -- ------------------------------------------------------------------------------
 -- POLÍTICAS: GAMIFICAÇÃO & PASSOS
@@ -1050,21 +1163,21 @@ create policy passos_self_write on public.registros_passos for all
 
 drop policy if exists passos_empresa_select on public.registros_passos;
 create policy passos_empresa_select on public.registros_passos for select
-  using (empresa_id = public.fn_empresa_atual());
+  using (empresa_id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma());
 
 drop policy if exists regras_select on public.regras_pontuacao;
 create policy regras_select on public.regras_pontuacao for select
-  using (empresa_id = public.fn_empresa_atual());
+  using (empresa_id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma());
 
 drop policy if exists regras_rh_write on public.regras_pontuacao;
 create policy regras_rh_write on public.regras_pontuacao for all
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 -- Carteiras e Transações: Apenas LEITURA para usuários (escrita exclusiva via trigger/RPC)
 drop policy if exists carteiras_self on public.carteiras;
 create policy carteiras_self on public.carteiras for select
-  using (usuario_id = auth.uid());
+  using (usuario_id = auth.uid() or public.fn_eh_admin_plataforma() or public.fn_eh_rh());
 
 drop policy if exists transacoes_self on public.transacoes_moedas;
 create policy transacoes_self on public.transacoes_moedas for select
@@ -1072,16 +1185,16 @@ create policy transacoes_self on public.transacoes_moedas for select
 
 drop policy if exists transacoes_rh on public.transacoes_moedas;
 create policy transacoes_rh on public.transacoes_moedas for select
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 drop policy if exists desafios_empresa on public.desafios;
 create policy desafios_empresa on public.desafios for select
-  using (empresa_id = public.fn_empresa_atual());
+  using (empresa_id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma());
 
 drop policy if exists desafios_rh_write on public.desafios;
 create policy desafios_rh_write on public.desafios for all
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 drop policy if exists participacoes_self on public.participacoes_desafio;
 create policy participacoes_self on public.participacoes_desafio for all
@@ -1118,12 +1231,12 @@ create policy opcoes_public on public.instrumento_opcoes for select to authentic
 
 drop policy if exists ciclos_empresa on public.ciclos_psicossociais;
 create policy ciclos_empresa on public.ciclos_psicossociais for select
-  using (empresa_id = public.fn_empresa_atual());
+  using (empresa_id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma());
 
 drop policy if exists ciclos_rh on public.ciclos_psicossociais;
 create policy ciclos_rh on public.ciclos_psicossociais for all
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 -- ------------------------------------------------------------------------------
 -- POLÍTICAS: AVALIAÇÃO PSICOSSOCIAL / BURNOUT (BLINDAGEM ABSOLUTA LGPD ART. 11)
@@ -1144,6 +1257,11 @@ create policy respostas_self on public.respostas_avaliacao for all
 drop policy if exists psicologos_public on public.psicologos;
 create policy psicologos_public on public.psicologos for select to authenticated using (ativo = true);
 
+drop policy if exists psicologos_rh_write on public.psicologos;
+create policy psicologos_rh_write on public.psicologos for all
+  using (public.fn_eh_rh() or public.fn_eh_admin_plataforma())
+  with check (public.fn_eh_rh() or public.fn_eh_admin_plataforma());
+
 drop policy if exists agenda_colaborador on public.agendamentos;
 create policy agenda_colaborador on public.agendamentos for select
   using (usuario_id = auth.uid());
@@ -1154,7 +1272,7 @@ create policy agenda_psicologo on public.agendamentos for select
 
 drop policy if exists agenda_rh_operacional on public.agendamentos;
 create policy agenda_rh_operacional on public.agendamentos for select
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 -- Prontuários Clínicos: Totalmente inacessível para RH.
 drop policy if exists prontuarios_acesso on public.prontuarios_agendamentos;
@@ -1172,12 +1290,12 @@ create policy prontuarios_acesso on public.prontuarios_agendamentos for all
 -- ------------------------------------------------------------------------------
 drop policy if exists beneficios_select on public.beneficios;
 create policy beneficios_select on public.beneficios for select to authenticated
-  using ((empresa_id is null or empresa_id = public.fn_empresa_atual()) and ativo = true);
+  using ((empresa_id is null or empresa_id = public.fn_empresa_atual() or public.fn_eh_admin_plataforma()) and ativo = true);
 
 drop policy if exists beneficios_rh_write on public.beneficios;
 create policy beneficios_rh_write on public.beneficios for all
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 drop policy if exists resgates_self on public.resgates;
 create policy resgates_self on public.resgates for select
@@ -1185,15 +1303,15 @@ create policy resgates_self on public.resgates for select
 
 drop policy if exists resgates_rh on public.resgates;
 create policy resgates_rh on public.resgates for all
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh())
-  with check (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma())
+  with check ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 -- ------------------------------------------------------------------------------
 -- POLÍTICAS: RELATÓRIOS NR-1 AGREGADOS, NOTIFICAÇÕES & AUDITORIA
 -- ------------------------------------------------------------------------------
 drop policy if exists nr1_rh on public.relatorios_nr1;
 create policy nr1_rh on public.relatorios_nr1 for select
-  using (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh());
+  using ((empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()) or public.fn_eh_admin_plataforma());
 
 drop policy if exists notificacoes_self on public.notificacoes;
 create policy notificacoes_self on public.notificacoes for all
@@ -1202,6 +1320,10 @@ create policy notificacoes_self on public.notificacoes for all
 drop policy if exists logs_auditoria_admin on public.logs_auditoria;
 create policy logs_auditoria_admin on public.logs_auditoria for select
   using (public.fn_eh_admin_plataforma() or (empresa_id = public.fn_empresa_atual() and public.fn_eh_rh()));
+
+drop policy if exists logs_auditoria_insert on public.logs_auditoria;
+create policy logs_auditoria_insert on public.logs_auditoria for insert to authenticated
+  with check (usuario_id is null or usuario_id = auth.uid() or public.fn_eh_admin_plataforma() or public.fn_eh_rh());
 
 -- ==============================================================================
 -- 10. SEGURANÇA ADICIONAL DE PERMISSÕES POSTGREST (LEAST PRIVILEGE)
@@ -1216,6 +1338,8 @@ grant select on public.transacoes_moedas to authenticated;
 -- Assegura permissões de execução para as RPCs
 grant execute on function public.fn_resgatar_beneficio(uuid, jsonb) to authenticated;
 grant execute on function public.fn_consolidar_ciclo_nr1(uuid) to authenticated;
+grant execute on function public.fn_aceitar_termo(uuid, text) to authenticated;
 grant execute on function public.fn_empresa_atual() to authenticated;
 grant execute on function public.fn_papel_atual() to authenticated;
 grant execute on function public.fn_eh_rh() to authenticated;
+grant execute on function public.fn_eh_admin_plataforma() to authenticated;

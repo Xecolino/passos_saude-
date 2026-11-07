@@ -21,8 +21,8 @@ export default function WelcomeEmailModal({ isOpen, onClose, employeeData }) {
 
   if (!isOpen || !employeeData) return null;
 
-  const { name, email, password } = employeeData;
-  const emailContent = buildWelcomeEmail({ name, email, password });
+  const { name, email, password = 'Gerada no 1º cadastro', companyName, papel } = employeeData;
+  const emailContent = buildWelcomeEmail({ name, email, password, companyName, papel });
 
   const handleCopyFullEmail = () => {
     try {
@@ -281,7 +281,7 @@ export default function WelcomeEmailModal({ isOpen, onClose, employeeData }) {
                     {password}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#15803d', marginTop: '2px' }}>
-                    Senha aleatória segura ({password.length} caracteres: letras, números e símbolos)
+                    Após entrar com a senha provisória e clicar em "Aceite" no Termo de Responsabilidade, sua situação mudará de <strong>convidado</strong> para <strong>ativo</strong>.
                   </div>
                 </div>
 
@@ -304,6 +304,34 @@ export default function WelcomeEmailModal({ isOpen, onClose, employeeData }) {
                   {copiedPassword ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
                   <span>{copiedPassword ? 'Senha Copiada!' : 'Copiar Senha'}</span>
                 </button>
+              </div>
+
+              {/* Link para entrar no App */}
+              <div style={{
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '14px',
+                padding: '12px 16px',
+                marginBottom: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: '#1d4ed8' }}>
+                    🔗 Link para entrar no App:
+                  </div>
+                  <a
+                    href={emailContent.appUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: '0.86rem', fontWeight: 700, color: '#2563eb', wordBreak: 'break-all' }}
+                  >
+                    {emailContent.appUrl}
+                  </a>
+                </div>
               </div>
 
               {/* 5. Aconselhamento Obrigatório de Troca de Senha */}

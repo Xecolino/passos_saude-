@@ -43,39 +43,53 @@ export function generateRandomPassword(minLength = 6, maxLength = 8) {
 }
 
 /**
- * Cria o conteúdo textual do e-mail de boas-vindas com todas as diretrizes solicitadas
- * @param {Object} params - { name, email, password }
- * @returns {Object} { subject, textBody, htmlGreeting }
+ * Cria o conteúdo textual do e-mail de boas-vindas com todas as diretrizes solicitadas:
+ *   - Texto de bem-vindo com o nome do usuário
+ *   - A senha provisória
+ *   - O link para entrar no app
+ * @param {Object} params - { name, email, password, companyName, papel, appUrl }
+ * @returns {Object} { subject, textBody, greeting, appUrl }
  */
-export function buildWelcomeEmail({ name, email, password }) {
-  const formattedName = (name || 'Colaborador(a)').trim();
-  const subject = `🎉 Seja bem vindo ao Passo Saúde ${formattedName}! Suas credenciais de acesso`;
+export function buildWelcomeEmail({ name, email, password, companyName = '', papel = '', appUrl = '' }) {
+  const formattedName = (name || 'Usuário(a)').trim();
+  const resolvedUrl =
+    appUrl ||
+    (typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'https://passos-saude.vercel.app');
 
-  const textBody = `Seja bem vindo ao Passo Saúde ${formattedName}!
+  const roleNotice =
+    papel === 'rh_admin'
+      ? `\n🏢 Perfil atribuído: Gestor RH Administrador (${companyName || 'Empresa'})\nVocê foi designado(a) como responsável pela gestão da sua empresa na plataforma Passo é Saúde.`
+      : companyName
+      ? `\n🏢 Empresa vinculada: ${companyName}`
+      : '';
 
-É uma alegria imensa ter você conosco nessa jornada rumo a uma rotina de trabalho mais ativa, saudável e recompensadora!
+  const subject = `🎉 Seja bem-vindo(a) ao Passo é Saúde, ${formattedName}! Suas credenciais de acesso`;
 
-🌟 Sobre o Passo é Saúde:
-O Passo é Saúde é a plataforma corporativa de bem-estar e gestão ocupacional da nossa empresa. Nosso propósito é transformar pequenos hábitos diários em grandes conquistas para sua saúde física e mental:
-• 🚶 Movimento & Metas: Monitore seus passos e combata o sedentarismo de forma leve e prática;
-• 🪙 Moedas PassoCoins: Suas caminhadas e hábitos saudáveis rendem moedas que podem ser trocadas na loja por folgas remuneradas (Day Off), vouchers e brindes especiais;
-• 🧘 Pausas Anti-Estresse: Acesse meditações guiadas e pausas ativas para alívio de fadiga e prevenção de burnout;
-• 🛡️ Escuta Segura & NR-1: Suporte psicológico dedicado e um canal acolhedor com sigilo total.
+  const textBody = `Seja bem-vindo(a) ao Passo é Saúde, ${formattedName}!
 
-🔑 Suas Credenciais de Acesso:
-E-mail: ${email}
-Senha temporária: ${password}
+É uma alegria ter você conosco na plataforma corporativa de bem-estar, gamificação e conformidade NR-1!${roleNotice}
 
-⚠️ Aconselhamos fortemente que você altere esta senha temporária no seu primeiro acesso ao aplicativo, acessando a aba "Meu Perfil", garantindo a privacidade e segurança total da sua conta.
+🔑 Suas Credenciais de Primeiro Acesso:
+• E-mail: ${email}
+• Senha provisória: ${password}
 
-Baixe o app ou acesse no seu navegador e comece a caminhar rumo à sua melhor versão!
+🔗 Link para entrar no App:
+${resolvedUrl}
 
-Com carinho,
-Equipe de Recursos Humanos, Saúde & SST — Passo é Saúde`;
+📋 Importante no seu Primeiro Acesso:
+1. Acesse o link acima (${resolvedUrl}) e informe seu e-mail e a senha provisória;
+2. Na tela inicial, leia o "Termo de Responsabilidade" e clique no botão "Aceite" para ativar o seu cadastro (sua situação mudará automaticamente de "convidado" para "ativo");
+3. Por segurança, recomendamos alterar sua senha provisória na aba "Meu Perfil".
+
+Atenciosamente,
+Equipe Passo é Saúde — Bem-Estar, Gamificação & Conformidade Ocupacional`;
 
   return {
     subject,
     textBody,
-    greeting: `Seja bem vindo ao Passo Saúde ${formattedName}`
+    greeting: `Seja bem-vindo(a) ao Passo é Saúde, ${formattedName}`,
+    appUrl: resolvedUrl
   };
 }

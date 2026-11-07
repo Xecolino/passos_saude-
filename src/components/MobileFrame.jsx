@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 
 export default function MobileFrame({ children }) {
   const { toastMessage, currentRole, currentScreen } = useApp();
-  const isWideDashboard = currentRole === 'rh' || currentScreen === 'rh_dashboard';
+  const isWideDashboard = currentRole === 'rh' || currentScreen === 'rh_dashboard' || currentScreen === 'admin_companies';
 
   return (
     <div className="viewport-wrapper">
