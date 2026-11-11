@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, X, AlertCircle, KeyRound } from 'lucide-react';
 
@@ -10,8 +10,27 @@ export default function RhLoginModal() {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Bloqueia o autopreenchimento automático do navegador ao abrir o modal
+  const [unlockAutofill, setUnlockAutofill] = useState(false);
+
+  useEffect(() => {
+    setEmail('');
+    setPassword('');
+    setShowPassword(false);
+    setErrorMessage('');
+    setIsLoading(false);
+    setUnlockAutofill(false);
+  }, [isRhLoginModalOpen]);
 
   if (!isRhLoginModalOpen) return null;
+
+  const handleClose = () => {
+    setEmail('');
+    setPassword('');
+    setShowPassword(false);
+    setErrorMessage('');
+    closeRhLoginModal();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,6 +40,10 @@ export default function RhLoginModal() {
       const result = await loginAsRh(email, password);
       if (!result.success) {
         setErrorMessage(result.error);
+      } else {
+        setEmail('');
+        setPassword('');
+        setShowPassword(false);
       }
     } finally {
       setIsLoading(false);
@@ -41,7 +64,7 @@ export default function RhLoginModal() {
         justifyContent: 'center',
         padding: '16px'
       }}
-      onClick={closeRhLoginModal}
+      onClick={handleClose}
     >
       <div
         className="app-card"
@@ -84,7 +107,7 @@ export default function RhLoginModal() {
           </div>
 
           <button
-            onClick={closeRhLoginModal}
+            onClick={handleClose}
             className="modal-close-btn"
             style={{ width: '32px', height: '32px' }}
             title="Fechar"
@@ -95,7 +118,7 @@ export default function RhLoginModal() {
 
         {/* Informative Note */}
         <p style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.45, marginBottom: '18px' }}>
-          Acesso exclusivo para <strong>Administração da Plataforma</strong> (<code>admin_plataforma</code>) e <strong>Gestores de RH</strong> (<code>rh_admin</code> / <code>rh_operador</code>).
+          Acesso restrito a usuários autorizados. Digite suas credenciais de gestão para continuar.
         </p>
 
         {/* Error Alert */}
@@ -118,7 +141,11 @@ export default function RhLoginModal() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off">
+          {/* Campos ocultos anti-autofill para impedir que o navegador injete credenciais salvas */}
+          <input type="text" name="prevent_autofill_user" autoComplete="username" style={{ display: 'none' }} tabIndex={-1} readOnly />
+          <input type="password" name="prevent_autofill_pass" autoComplete="new-password" style={{ display: 'none' }} tabIndex={-1} readOnly />
+
           {/* E-mail */}
           <div className="form-group">
             <label className="form-label">E-mail de acesso</label>
@@ -126,8 +153,13 @@ export default function RhLoginModal() {
               <Mail size={18} className="input-icon" />
               <input
                 type="email"
+                name="rh_restricted_access_login"
+                autoComplete="off"
+                readOnly={!unlockAutofill}
+                onFocus={() => setUnlockAutofill(true)}
+                onMouseDown={() => setUnlockAutofill(true)}
                 className="form-input"
-                placeholder="seu.email@empresa.com.br"
+                placeholder="Digite seu e-mail corporativo"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -142,6 +174,11 @@ export default function RhLoginModal() {
               <Lock size={18} className="input-icon" />
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="rh_restricted_access_secret"
+                autoComplete="new-password"
+                readOnly={!unlockAutofill}
+                onFocus={() => setUnlockAutofill(true)}
+                onMouseDown={() => setUnlockAutofill(true)}
                 className="form-input"
                 placeholder="Digite sua senha"
                 value={password}
@@ -176,7 +213,7 @@ export default function RhLoginModal() {
               type="button"
               className="btn-secondary"
               style={{ flex: 1 }}
-              onClick={closeRhLoginModal}
+              onClick={handleClose}
             >
               Cancelar
             </button>

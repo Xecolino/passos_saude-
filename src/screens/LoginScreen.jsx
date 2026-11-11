@@ -10,6 +10,7 @@ export default function LoginScreen() {
   const [forgotSent, setForgotSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [unlockAutofill, setUnlockAutofill] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,6 +20,9 @@ export default function LoginScreen() {
       const res = await handleLogin('colaborador', { email, password });
       if (res && res.success === false && res.error) {
         setErrorMessage(res.error);
+      } else {
+        setEmail('');
+        setPassword('');
       }
     } finally {
       setIsLoading(false);
@@ -26,6 +30,8 @@ export default function LoginScreen() {
   };
 
   const handleRhLogin = () => {
+    setEmail('');
+    setPassword('');
     handleLogin('rh');
   };
 
@@ -98,7 +104,10 @@ export default function LoginScreen() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off">
+          <input type="text" name="prevent_autofill_login_user" autoComplete="username" style={{ display: 'none' }} tabIndex={-1} readOnly />
+          <input type="password" name="prevent_autofill_login_pass" autoComplete="new-password" style={{ display: 'none' }} tabIndex={-1} readOnly />
+
           {/* E-mail */}
           <div className="form-group">
             <label className="form-label">E-mail corporativo</label>
@@ -106,6 +115,11 @@ export default function LoginScreen() {
               <Mail size={18} className="input-icon" />
               <input
                 type="email"
+                name="colab_access_email"
+                autoComplete="off"
+                readOnly={!unlockAutofill}
+                onFocus={() => setUnlockAutofill(true)}
+                onMouseDown={() => setUnlockAutofill(true)}
                 className="form-input"
                 placeholder="seu.email@empresa.com.br"
                 value={email}
@@ -122,6 +136,11 @@ export default function LoginScreen() {
               <Lock size={18} className="input-icon" />
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="colab_access_secret"
+                autoComplete="new-password"
+                readOnly={!unlockAutofill}
+                onFocus={() => setUnlockAutofill(true)}
+                onMouseDown={() => setUnlockAutofill(true)}
                 className="form-input"
                 placeholder="Digite sua senha de acesso"
                 value={password}

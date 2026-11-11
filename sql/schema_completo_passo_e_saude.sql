@@ -655,9 +655,53 @@ create trigger tg_transacao_moeda
   after insert on public.transacoes_moedas
   for each row execute function public.fn_aplicar_transacao_moeda();
 
--- 7.3 Provisionamento Automático de Usuário e Vinculação de Convite
--- Retificado: o usuário convidado entra com situacao = 'convidado' e só muda para 'ativo'
--- quando aceita o Termo de Responsabilidade (public.aceites_termo) no seu 1º acesso no App.
+-- 7.3 Provisionamento Automático de Usuário, Confirmação de E-mail Auth e Vinculação de Convite
+-- Retificado:
+--   a) Confirma automaticamente email_confirmed_at em auth.users para que o convidado entre direto com a senha provisória;
+--   b) O usuário convidado entra em public.usuarios com situacao = 'convidado' e só muda para 'ativo'
+--      quando aceita o Termo de Responsabilidade (public.aceites_termo) no seu 1º acesso no App.
+create or replace function public.fn_autoconfirmar_email_auth()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.email_confirmed_at is null then
+    new.email_confirmed_at := now();
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists tg_autoconfirmar_email_auth on auth.users;
+create trigger tg_autoconfirmar_email_auth
+  before insert on auth.users
+  for each row execute function public.fn_autoconfirmar_email_auth();
+
+-- RPC auxiliar para confirmar imediatamente qualquer conta convidada que esteja com email_confirmed_at nulo
+create or replace function public.fn_confirmar_email_convidado(p_email text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_updated int := 0;
+begin
+  if p_email is null or trim(p_email) = '' then
+    return jsonb_build_object('ok', false, 'erro', 'E-mail não informado.');
+  end if;
+
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         updated_at = now()
+   where lower(email) = lower(trim(p_email))
+     and email_confirmed_at is null;
+
+  get diagnostics v_updated = row_count;
+  return jsonb_build_object('ok', true, 'confirmados', v_updated);
+end $$;
+
+grant execute on function public.fn_confirmar_email_convidado(text) to anon, authenticated;
+
+-- Confirma retroativamente todos os usuários já cadastrados em auth.users que estavam aguardando confirmação de e-mail
+update auth.users
+   set email_confirmed_at = coalesce(email_confirmed_at, now()),
+       updated_at = now()
+ where email_confirmed_at is null;
+
 create or replace function public.fn_novo_usuario()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare

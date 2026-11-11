@@ -952,6 +952,10 @@ export function AppProvider({ children }) {
 
     if (['rh_admin', 'rh_operador'].includes(profile.papel)) {
       setIsRhAuthenticated(true);
+      setCurrentRole('rh');
+      setCurrentScreen('rh_dashboard');
+      showToast(`Olá, ${profile.name}! Bem-vindo(a) ao Painel Gestor RH!`);
+      return { success: true };
     }
 
     setCurrentRole('colaborador');

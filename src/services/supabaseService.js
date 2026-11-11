@@ -104,17 +104,45 @@ export async function signInWithSupabase(email, password) {
     return { success: false, localOnly: true, error: 'Supabase não configurado no .env' };
   }
 
+  const cleanEmail = (email || '').trim().toLowerCase();
+
   try {
-    const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    let response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: getHeaders({}, false),
-      body: JSON.stringify({ email: email.trim(), password })
+      body: JSON.stringify({ email: cleanEmail, password })
     });
 
+    // Se o Supabase Auth retornar "Email not confirmed", aciona a RPC fn_confirmar_email_convidado e tenta novamente
     if (!response.ok) {
-      const errText = await response.text();
-      const parsed = parseSupabaseError(errText, 'auth.users');
-      return { success: false, error: parsed.message };
+      const firstErrText = await response.text();
+      if (firstErrText.toLowerCase().includes('email not confirmed') || firstErrText.toLowerCase().includes('email_not_confirmed')) {
+        await fetch(`${SUPABASE_URL}/rest/v1/rpc/fn_confirmar_email_convidado`, {
+          method: 'POST',
+          headers: getHeaders({}, false),
+          body: JSON.stringify({ p_email: cleanEmail })
+        }).catch(() => {});
+
+        response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: getHeaders({}, false),
+          body: JSON.stringify({ email: cleanEmail, password })
+        });
+
+        if (!response.ok) {
+          const retryErrText = await response.text();
+          const parsedRetry = parseSupabaseError(retryErrText, 'auth.users');
+          return {
+            success: false,
+            error: parsedRetry.message.toLowerCase().includes('email not confirmed')
+              ? 'E-mail aguardando liberação no Supabase Auth. Execute o bloco SQL de confirmação automática no SQL Editor do Supabase.'
+              : parsedRetry.message
+          };
+        }
+      } else {
+        const parsed = parseSupabaseError(firstErrText, 'auth.users');
+        return { success: false, error: parsed.message };
+      }
     }
 
     const authData = await response.json();
@@ -141,24 +169,26 @@ export async function signInWithSupabase(email, password) {
 }
 
 /**
- * Cria conta no Supabase Auth para um colaborador convidado pelo RH.
- * Dispara automaticamente a trigger `tg_novo_usuario` no banco, que:
- *   1. Lê o convite em `public.convites` pelo e-mail
- *   2. Cria o registro em `public.usuarios` vinculado à `empresa_id` e `setor_id`
- *   3. Inicializa a carteira em `public.carteiras` com saldo 0
- *   4. Marca o convite como `aceito`
+ * Cria conta no Supabase Auth para um colaborador ou responsável RH convidado.
+ * Dispara automaticamente as triggers `tg_autoconfirmar_email_auth` e `tg_novo_usuario` no banco:
+ *   1. Confirma `email_confirmed_at` em `auth.users` para permitir login imediato com senha provisória
+ *   2. Lê o convite em `public.convites` pelo e-mail
+ *   3. Cria o registro em `public.usuarios` com `situacao = 'convidado'` vinculado à `empresa_id` e `setor_id`
+ *   4. Inicializa a carteira em `public.carteiras` com saldo 0
  */
 export async function signUpCollaboratorAuth({ email, password, name, phone }) {
   if (!isSupabaseConfigured() || !email || !password) {
     return { success: false, localOnly: true };
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+
   try {
     const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
       method: 'POST',
       headers: getHeaders({}, false),
       body: JSON.stringify({
-        email: email.trim(),
+        email: cleanEmail,
         password,
         data: {
           nome: name,
@@ -174,6 +204,14 @@ export async function signUpCollaboratorAuth({ email, password, name, phone }) {
 
     const data = await response.json();
     const createdUserId = data?.user?.id || data?.id || null;
+
+    // Garante confirmação imediata do e-mail via RPC caso o projeto Supabase esteja com "Confirm email" ativo
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/fn_confirmar_email_convidado`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ p_email: cleanEmail })
+    }).catch(() => {});
+
     return { success: true, userId: createdUserId, data };
   } catch (error) {
     return { success: false, error: error.message };
