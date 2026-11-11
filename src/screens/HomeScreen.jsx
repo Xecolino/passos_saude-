@@ -225,7 +225,7 @@ export default function HomeScreen() {
               </div>
               <div className="activity-title-group">
                 <h4>Caminhada Orientada</h4>
-                <p>Ganhe 1 moeda por minuto</p>
+                <p>Ganhe moedas por passos</p>
               </div>
             </div>
             <span className="activity-reward-badge">+12 moedas</span>
