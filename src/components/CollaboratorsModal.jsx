@@ -201,20 +201,7 @@ create policy convites_demo on public.convites for all to anon, authenticated
                   }}>
                     {employeesList.length} registros
                   </span>
-                  <span style={{
-                    background: isDatabaseConnected ? '#eff6ff' : '#f1f5f9',
-                    color: isDatabaseConnected ? '#1d4ed8' : '#64748b',
-                    padding: '2px 10px',
-                    borderRadius: '999px',
-                    fontSize: '0.72rem',
-                    fontWeight: 700
-                  }}>
-                    {isDatabaseConnected ? '● Conectado (usuarios + convites + setores)' : '○ Modo Local / Simulador'}
-                  </span>
                 </div>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
-                  Integrado a <code>public.usuarios</code>, <code>public.convites</code>, <code>public.setores</code>, <code>public.carteiras</code> e <code>vw_ranking_passos</code>
-                </p>
               </div>
             </div>
 
@@ -570,25 +557,6 @@ create policy convites_demo on public.convites for all to anon, authenticated
               >
                 <RefreshCw size={14} className={isSyncing ? 'pulse-breath' : ''} />
                 <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Supabase'}</span>
-              </button>
-
-              <button
-                onClick={() => setIsRlsModalOpen(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#64748b',
-                  fontSize: '0.76rem',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-                title="Ver instruções dos scripts SQL para as 31 tabelas do Supabase"
-              >
-                <Database size={13} />
-                <span>Scripts SQL &amp; RLS</span>
               </button>
             </div>
 
