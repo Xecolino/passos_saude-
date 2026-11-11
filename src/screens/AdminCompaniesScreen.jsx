@@ -429,9 +429,28 @@ export default function AdminCompaniesScreen({ onOpenCompanyDashboard }) {
                 <strong style={{ color: '#0f172a' }}>{activeCompany.segmento || '-'}</strong>
               </div>
 
-              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block' }}>URL da Logo (logo_url)</span>
-                <strong style={{ color: '#0f172a', wordBreak: 'break-all' }}>{activeCompany.logo_url || '-'}</strong>
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {activeCompany.logo_url && (
+                  <img
+                    src={activeCompany.logo_url}
+                    alt={`Logo ${activeCompany.razao_social}`}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      objectFit: 'contain',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      padding: '2px',
+                      flexShrink: 0
+                    }}
+                  />
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block' }}>URL da Logo (logo_url)</span>
+                  <strong style={{ color: '#0f172a', wordBreak: 'break-all' }}>{activeCompany.logo_url || '-'}</strong>
+                </div>
               </div>
 
               <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import CollaboratorsModal from '../components/CollaboratorsModal';
 import {
@@ -10,8 +10,7 @@ import {
   Download,
   ArrowLeft,
   Lock,
-  RefreshCw,
-  Database
+  RefreshCw
 } from 'lucide-react';
 
 export default function RHDashboardScreen() {
@@ -22,12 +21,16 @@ export default function RHDashboardScreen() {
     logoutRh,
     showToast,
     nr1ComplianceReport,
-    consolidateNr1Cycle,
-    isDatabaseConnected
+    consolidateNr1Cycle
   } = useApp();
 
   const [isCollaboratorsModalOpen, setIsCollaboratorsModalOpen] = useState(false);
   const [isConsolidating, setIsConsolidating] = useState(false);
+  const [logoLoadError, setLogoLoadError] = useState(false);
+
+  useEffect(() => {
+    setLogoLoadError(false);
+  }, [nr1ComplianceReport?.logoUrl]);
 
   const handleExport = () => {
     showToast('Relatório de Conformidade NR-1 (relatorios_nr1) gerado com sucesso para o PGR/GRO!');
@@ -155,43 +158,46 @@ export default function RHDashboardScreen() {
         gap: '14px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '50%',
-            background: '#dcfce7',
-            color: '#15803d',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0
-          }}>
-            <ShieldCheck size={26} />
-          </div>
+          {nr1ComplianceReport?.logoUrl && !logoLoadError ? (
+            <img
+              src={nr1ComplianceReport.logoUrl}
+              alt={`Logo ${nr1ComplianceReport.company}`}
+              onError={() => setLogoLoadError(true)}
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                objectFit: 'contain',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                padding: '4px',
+                flexShrink: 0
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              background: '#dcfce7',
+              color: '#15803d',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <ShieldCheck size={26} />
+            </div>
+          )}
           <div>
             <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
               Empresa: {nr1ComplianceReport.company}
             </h4>
             <p style={{ fontSize: '0.78rem', color: '#475569', marginTop: '2px' }}>
-              CNPJ: {nr1ComplianceReport.cnpj} • Fonte: <code>relatorios_nr1</code> (K-Anonimato N ≥ 5 &amp; LGPD Art. 11)
+              CNPJ: {nr1ComplianceReport.cnpj}
             </p>
           </div>
         </div>
-
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          background: isDatabaseConnected ? '#dcfce7' : '#f1f5f9',
-          color: isDatabaseConnected ? '#15803d' : '#64748b',
-          padding: '4px 12px',
-          borderRadius: '999px',
-          fontSize: '0.72rem',
-          fontWeight: 700
-        }}>
-          <Database size={13} />
-          <span>{isDatabaseConnected ? 'Supabase Multi-Tenant Ativo' : 'Base Local de Demonstração'}</span>
-        </span>
       </div>
 
       {/* 4 Main Corporate KPIs */}
@@ -260,12 +266,9 @@ export default function RHDashboardScreen() {
 
       {/* Burnout & Psychosocial Risk Distribution */}
       <div className="app-card" style={{ padding: '20px', marginBottom: '20px' }}>
-        <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+        <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
           Inventário de Riscos Psicossociais &amp; Fadiga (<code>relatorios_nr1</code>)
         </h4>
-        <p style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '16px' }}>
-          Dados agregados anonimizados por <code>fn_consolidar_ciclo_nr1</code> (trava de k-anonimato N ≥ 5 respondentes por GHE/setor).
-        </p>
 
         {/* Stacked Bar */}
         <div style={{
@@ -304,7 +307,7 @@ export default function RHDashboardScreen() {
       {/* Interdepartmental Rankings Table */}
       <div className="app-card" style={{ padding: '20px', marginBottom: '20px' }}>
         <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
-          Engajamento e Recorte por Setor / GHE (<code>setores</code> &amp; <code>vw_ranking_passos</code>)
+          Engajamento e Recorte por Setor
         </h4>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

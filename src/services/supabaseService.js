@@ -1908,6 +1908,7 @@ export async function fetchNr1ComplianceDataFromSupabase(empresaId = DEFAULT_EMP
         empresaId: empresa.id || empresaId,
         company: empresa.razao_social || 'TechCorp Brasil Ltda',
         cnpj: empresa.cnpj || '12.345.678/0001-90',
+        logoUrl: empresa.logo_url || null,
         totalEmployees: empresa.total_colaboradores || 342,
         activeParticipationRate: Number(ind.activeParticipationRate || 87.4),
         nr1NormReference: 'Norma Regulamentadora NR-1 (Portaria MTP nº 4.219 / Diretrizes GRO & PGR — K-Anonimato N ≥ 5)',

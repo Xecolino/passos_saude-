@@ -192,6 +192,14 @@ export function AppProvider({ children }) {
       if (companyRes.success && companyRes.data) {
         connected = true;
         if (companyRes.data.id) setEmpresaId(companyRes.data.id);
+        setNr1ComplianceReport(prev => ({
+          ...prev,
+          empresaId: companyRes.data.id || prev.empresaId,
+          company: companyRes.data.razao_social || prev.company,
+          cnpj: companyRes.data.cnpj || prev.cnpj,
+          logoUrl: companyRes.data.logo_url || null,
+          totalEmployees: companyRes.data.total_colaboradores ?? prev.totalEmployees
+        }));
       }
 
       if (sectorsRes.success && Array.isArray(sectorsRes.data)) {
